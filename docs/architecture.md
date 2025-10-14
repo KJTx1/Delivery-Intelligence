@@ -20,8 +20,9 @@ This document outlines the LangChain-driven workflow that orchestrates proof-of-
 - `DamageDetectionTool` invokes a custom Vision model or YOLO deployment to classify visible package damage likelihood.
 
 ## 5. LangChain Orchestration
-- `build_caption_chain` blends raw metadata with model-generated captions to produce a reviewer-friendly summary using a text LLM hosted on OCI Generative AI.
+- `build_caption_chain` blends raw metadata with model-generated captions to produce a reviewer-friendly summary using OCI Generative AI chat API.
 - `run_quality_pipeline` composes retrieval, EXIF parsing, captioning, and damage detection tools. It computes delivery quality metrics and feeds them into a reviewer prompt handled by `build_workflow_chain`.
+- **OCI Generative AI Integration**: Uses the `chat` API with `DedicatedServingMode` and endpoint OCID for production-grade text generation.
 
 ## 6. Delivery Quality Index
 - `compute_quality_index` merges timeliness, location accuracy, and damage scores using configurable weights to produce a normalized Delivery Quality Index.
@@ -31,7 +32,15 @@ This document outlines the LangChain-driven workflow that orchestrates proof-of-
 - `store_quality_event` is the hook for persisting results into Autonomous Data Warehouse or an OCI Database table.
 - `trigger_alert` publishes to Notifications or Streaming when the LLM assessment flags the delivery for manual review.
 
-## 8. Extensibility
+## 8. OCI Generative AI Implementation
+- **API Endpoint**: Uses `https://inference.generativeai.{region}.oci.oraclecloud.com` for chat API calls
+- **Authentication**: Leverages OCI SDK configuration from `~/.oci/config` or environment variables
+- **Model Access**: Requires `OCI_TEXT_MODEL_OCID` (endpoint OCID) and `OCI_COMPARTMENT_ID`
+- **Request Format**: Uses `GenericChatRequest` with `DedicatedServingMode` for production endpoints
+- **Response Handling**: Extracts text from nested `chat_response.choices[0].message.content[0].text` structure
+- **Error Handling**: Graceful fallback with detailed error messages for debugging
+
+## 9. Extensibility
 - The `toolset` factory enables registering additional LangChain tools (e.g., OCR, additional computer vision models).
 - Configuration is centralized via `config.py`, ensuring deployment environments can adjust weights, endpoints, or alerting thresholds without code changes.
 - `python -m oci_delivery_agent.start` provides a CLI harness mirroring the production workflow for rapid iteration and manual testing.
