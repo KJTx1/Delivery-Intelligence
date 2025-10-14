@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Mapping
 
 from langchain.chains import LLMChain, SequentialChain
 from langchain.prompts import PromptTemplate
-from langchain.schema import BaseLLM
+from langchain_core.language_models import BaseLLM
 
 from .config import WorkflowConfig
 from .tools import toolset

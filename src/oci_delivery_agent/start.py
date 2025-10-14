@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict
 
-from langchain.llms import OCIModel
+# from langchain.llms import OCIModel  # Commented out due to version compatibility
 from langchain.llms.fake import FakeListLLM
 
 from .chains import DeliveryContext, run_quality_pipeline
@@ -84,10 +84,9 @@ def _build_llm(config: WorkflowConfig, args: argparse.Namespace):
         )
         return FakeListLLM(responses=[canned_response])
 
-    return OCIModel(
-        compartment_id=config.vision.compartment_id,
-        model_id=args.model_ocid or os.environ.get("OCI_TEXT_MODEL_OCID", ""),
-    )
+    # Use the same OCI GenAI implementation as handlers.py
+    from .handlers import build_llm
+    return build_llm(config)
 
 
 def parse_args(argv: Any | None = None) -> argparse.Namespace:

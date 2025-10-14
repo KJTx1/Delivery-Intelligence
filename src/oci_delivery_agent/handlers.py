@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict
 
-from langchain.llms import OCIModel
+# from langchain.llms import OCIModel  # Commented out due to version compatibility
 
 from .chains import DeliveryContext, run_quality_pipeline
 from .config import (
@@ -46,10 +46,113 @@ def load_config() -> WorkflowConfig:
 
 
 def build_llm(config: WorkflowConfig) -> OCIModel:
-    return OCIModel(
-        compartment_id=config.vision.compartment_id,
-        model_id=os.environ.get("OCI_TEXT_MODEL_OCID", ""),
-    )
+    """Build OCI Generative AI client for chat API"""
+    import oci
+    from oci.generative_ai_inference import GenerativeAiInferenceClient
+    
+    # Get configuration from environment
+    hostname = os.environ.get("OCI_GENAI_HOSTNAME")
+    model_ocid = os.environ.get("OCI_TEXT_MODEL_OCID")
+    compartment_id = os.environ.get("OCI_COMPARTMENT_ID")
+    
+    if not hostname:
+        raise ValueError("OCI_GENAI_HOSTNAME must be set")
+    
+    if not model_ocid:
+        print("Warning: OCI_TEXT_MODEL_OCID not set, using placeholder")
+        model_ocid = "ocid1.test.oc1..<unique_ID>EXAMPLE-modelId-Value"
+    
+    if not compartment_id:
+        raise ValueError("OCI_COMPARTMENT_ID must be set")
+    
+    # Remove endpoint path if included in hostname
+    if '/20231130/actions/generateText' in hostname:
+        hostname = hostname.replace('/20231130/actions/generateText', '')
+    
+    # Load OCI configuration with error handling
+    try:
+        oci_config = oci.config.from_file()
+    except Exception as config_error:
+        print(f"Warning: Could not load OCI config file: {config_error}")
+        # Try environment variables as fallback
+        try:
+            oci_config = oci.config.from_file("~/.oci/config")
+        except Exception as fallback_error:
+            raise ValueError(f"Could not load OCI configuration: {config_error}, {fallback_error}")
+    
+    # Initialize Generative AI client
+    try:
+        client = GenerativeAiInferenceClient(
+            config=oci_config,
+            service_endpoint=hostname,
+            retry_strategy=oci.retry.NoneRetryStrategy(),
+            timeout=(10, 240)
+        )
+    except Exception as client_error:
+        raise RuntimeError(f"Failed to initialize OCI Generative AI client: {client_error}")
+    
+    # Create custom LLM wrapper for OCI GenAI chat API
+    class OCIGenAIModel:
+        def __init__(self, client, model_ocid, compartment_id):
+            self.client = client
+            self.model_ocid = model_ocid
+            self.compartment_id = compartment_id
+        
+        def generate(self, prompt: str, **kwargs) -> str:
+            """Generate text using OCI GenAI chat API"""
+            try:
+                # Create content and message
+                content = oci.generative_ai_inference.models.TextContent()
+                content.text = prompt
+                
+                message = oci.generative_ai_inference.models.Message()
+                message.role = "USER"
+                message.content = [content]
+                
+                # Create chat request
+                chat_request = oci.generative_ai_inference.models.GenericChatRequest()
+                chat_request.api_format = oci.generative_ai_inference.models.BaseChatRequest.API_FORMAT_GENERIC
+                chat_request.messages = [message]
+                chat_request.max_tokens = kwargs.get('max_tokens', 300)
+                chat_request.temperature = kwargs.get('temperature', 0.7)
+                chat_request.frequency_penalty = kwargs.get('frequency_penalty', 0)
+                chat_request.presence_penalty = kwargs.get('presence_penalty', 0)
+                chat_request.top_p = kwargs.get('top_p', 0.75)
+                
+                # Create serving mode with endpoint ID
+                serving_mode = oci.generative_ai_inference.models.DedicatedServingMode(
+                    endpoint_id=self.model_ocid
+                )
+                
+                # Create chat details
+                chat_detail = oci.generative_ai_inference.models.ChatDetails()
+                chat_detail.serving_mode = serving_mode
+                chat_detail.chat_request = chat_request
+                chat_detail.compartment_id = self.compartment_id
+                
+                # Call the chat API
+                response = self.client.chat(chat_detail)
+                
+                # Extract text from response
+                if (response.data and 
+                    hasattr(response.data, 'chat_response') and 
+                    response.data.chat_response and
+                    hasattr(response.data.chat_response, 'choices') and 
+                    response.data.chat_response.choices and
+                    len(response.data.chat_response.choices) > 0 and
+                    hasattr(response.data.chat_response.choices[0], 'message') and
+                    response.data.chat_response.choices[0].message and
+                    hasattr(response.data.chat_response.choices[0].message, 'content') and
+                    response.data.chat_response.choices[0].message.content and
+                    len(response.data.chat_response.choices[0].message.content) > 0):
+                    return response.data.chat_response.choices[0].message.content[0].text
+                else:
+                    return "Error: No response generated"
+                    
+            except Exception as e:
+                return f"Error generating text: {str(e)}"
+    
+    return OCIGenAIModel(client, model_ocid, compartment_id)
 
 
 def handler(ctx: Any, data: bytes) -> Dict[str, Any]:
