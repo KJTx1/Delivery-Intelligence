@@ -27,11 +27,15 @@ class DeliveryContext:
 
 def build_caption_chain(llm: BaseLLM) -> LLMChain:
     prompt = PromptTemplate(
-        input_variables=["metadata", "caption"],
+        input_variables=["metadata", "caption_json"],
         template=(
             "You are validating proof-of-delivery photos. Given the delivery metadata\n"
-            "{metadata}\nand the automated caption {caption}, summarize the scene in 2 sentences"
-            " highlighting delivery location cues."
+            "{metadata}\nand the automated scene analysis\n{caption_json}\n"
+            "Summarize the delivery scene in 2 sentences highlighting:\n"
+            "- Package visibility and location\n"
+            "- Safety and security concerns\n"
+            "- Environmental conditions\n"
+            "Be concise and focus on delivery quality assessment."
         ),
     )
     return LLMChain(prompt=prompt, llm=llm, output_key="caption_summary")
@@ -72,8 +76,15 @@ def compute_timeliness_score(context: DeliveryContext) -> float:
     return max(0.0, 1 - min(delay, 4) / 4)
 
 
-def compute_damage_score(damage_predictions: Mapping[str, float]) -> float:
-    damage_prob = damage_predictions.get("damage", 0.0)
+def compute_damage_score(damage_report: Mapping[str, Any]) -> float:
+    """Compute damage score from structured damage report JSON."""
+    # Try to extract score from overall field
+    if isinstance(damage_report.get("overall"), dict):
+        score = damage_report["overall"].get("score", 0.0)
+        # Score is damage probability, so quality = 1 - damage
+        return max(0.0, 1 - float(score))
+    # Fallback: old format with "damage" key
+    damage_prob = damage_report.get("damage", 0.0)
     return max(0.0, 1 - damage_prob)
 
 
@@ -135,17 +146,22 @@ def run_quality_pipeline(
     encoded_payload = retrieval_output["payload"]
 
     exif_raw = json.loads(tools["exif"].run(encoded_payload))
+    
+    # Get structured caption JSON
+    caption_json = tools["caption"].run(encoded_payload)
     caption_summary = build_caption_chain(llm).run(
         metadata=json.dumps(retrieval_output["metadata"]),
-        caption=tools["caption"].run(encoded_payload),
+        caption_json=caption_json,
     )
-    damage_predictions = json.loads(tools["damage"].run(encoded_payload))
+    
+    # Get structured damage report JSON
+    damage_report = json.loads(tools["damage"].run(encoded_payload))
 
     weights = config.quality_weights.normalized()
     quality_metrics = compute_quality_index(
         context=context,
         exif=exif_raw,
-        damage_predictions=damage_predictions,
+        damage_predictions=damage_report,
         weights=weights,
         max_distance_meters=config.geolocation.max_distance_meters,
     )
@@ -168,8 +184,9 @@ def run_quality_pipeline(
     return {
         "metadata": retrieval_output["metadata"],
         "exif": exif_raw,
+        "caption_json": json.loads(caption_json),
         "caption_summary": caption_summary,
-        "damage_predictions": damage_predictions,
+        "damage_report": damage_report,
         "quality_metrics": quality_metrics,
         "assessment": assessment_payload,
     }

@@ -16,12 +16,13 @@ This document outlines the LangChain-driven workflow that orchestrates proof-of-
 - `compute_location_accuracy` in `chains.py` converts GPS coordinates to decimal degrees and evaluates the Haversine distance against expected delivery coordinates stored in the event payload or retrieved via a geocoding API.
 
 ## 4. Visual Intelligence
-- `ImageCaptionTool` integrates with an OCI Vision or OCI Data Science deployment endpoint to summarize scene context.
-- `DamageDetectionTool` invokes a custom Vision model or YOLO deployment to classify visible package damage likelihood.
+- `ImageCaptionTool` uses OCI Generative AI Vision models to analyze delivery scenes and generate structured JSON captions with scene type, package visibility, location details, environmental conditions, and safety assessment.
+- `DamageDetectionTool` leverages OCI Generative AI Vision models to detect and classify package damage with structured JSON output including overall severity, specific damage indicators (box deformation, corner damage, leakage, packaging integrity), and confidence scores.
 
 ## 5. LangChain Orchestration
-- `build_caption_chain` blends raw metadata with model-generated captions to produce a reviewer-friendly summary using OCI Generative AI chat API.
-- `run_quality_pipeline` composes retrieval, EXIF parsing, captioning, and damage detection tools. It computes delivery quality metrics and feeds them into a reviewer prompt handled by `build_workflow_chain`.
+- `build_caption_chain` processes structured JSON captions from the vision model to produce reviewer-friendly summaries using OCI Generative AI chat API.
+- `run_quality_pipeline` orchestrates retrieval, EXIF parsing, captioning, and damage detection tools. It computes delivery quality metrics using structured JSON outputs and feeds them into reviewer prompts.
+- **Structured JSON Processing**: All vision tools return structured JSON for consistent pipeline processing and quality scoring.
 - **OCI Generative AI Integration**: Uses the `chat` API with `DedicatedServingMode` and endpoint OCID for production-grade text generation.
 
 ## 6. Delivery Quality Index
@@ -37,6 +38,8 @@ This document outlines the LangChain-driven workflow that orchestrates proof-of-
 - **Authentication**: Leverages OCI SDK configuration from `~/.oci/config` or environment variables
 - **Model Access**: Requires `OCI_TEXT_MODEL_OCID` (endpoint OCID) and `OCI_COMPARTMENT_ID`
 - **Request Format**: Uses `GenericChatRequest` with `DedicatedServingMode` for production endpoints
+- **Multimodal Support**: Supports both text and image content for vision analysis
+- **Structured Output**: Vision models return structured JSON with specific schemas for captions and damage detection
 - **Response Handling**: Extracts text from nested `chat_response.choices[0].message.content[0].text` structure
 - **Error Handling**: Graceful fallback with detailed error messages for debugging
 
