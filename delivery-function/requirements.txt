@@ -1,0 +1,11 @@
+fdk>=0.1.21
+oci>=2.145.0
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langsmith>=0.1.0
+pillow>=9.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+pydantic==2.9.2
+exifread>=3.0.0
