@@ -1,0 +1,528 @@
+"""LangChain tools wrapping OCI services for the delivery workflow."""
+from __future__ import annotations
+
+import base64
+import io
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from langchain.tools import BaseTool
+from PIL import Image, ExifTags
+
+from .config import WorkflowConfig
+
+try:  # pragma: no cover - optional dependency for real OCI calls
+    import oci
+except Exception:  # pragma: no cover - fall back to local mode when OCI SDK missing
+    oci = None
+
+
+class ObjectStorageClient:
+    """Wrapper that prefers live OCI access but supports local testing."""
+
+    def __init__(self, config: WorkflowConfig):
+        self._config = config
+        self._client = self._build_oci_client()
+
+    def _build_oci_client(self):  # pragma: no cover - requires OCI SDK & credentials
+        if oci is None:
+            return None
+        try:
+            oci_config = oci.config.from_file()
+            return oci.object_storage.ObjectStorageClient(oci_config)
+        except Exception:
+            return None
+
+    def _resolve_object_name(self, object_name: str) -> str:
+        prefix = self._config.object_storage.delivery_prefix or ""
+        if object_name.startswith(prefix):
+            return object_name
+        return f"{prefix}{object_name}" if prefix else object_name
+
+    def _load_local_file(self, object_name: str) -> Optional[Dict[str, Any]]:
+        root = Path(self._config.local_asset_root or ".")
+        candidate = root / object_name
+        if not candidate.exists():
+            candidate = root / self._resolve_object_name(object_name)
+        if not candidate.exists():
+            return None
+        payload = candidate.read_bytes()
+        return {
+            "data": payload,
+            "metadata": {
+                "content_type": "image/jpeg",
+                "size": len(payload),
+                "object_name": str(candidate),
+                "retrieved_at": datetime.utcnow().isoformat(),
+                "source": "local",
+            },
+        }
+
+    def get_object(self, object_name: str) -> Dict[str, Any]:
+        resolved_name = self._resolve_object_name(object_name)
+        
+        # Try OCI first if client exists and namespace/bucket are not test values
+        if (self._client is not None and 
+            self._config.object_storage.namespace != "test" and 
+            self._config.object_storage.bucket_name != "test"):  # pragma: no cover - network interaction
+            try:
+                response = self._client.get_object(
+                    namespace_name=self._config.object_storage.namespace,
+                    bucket_name=self._config.object_storage.bucket_name,
+                    object_name=resolved_name,
+                )
+                payload = response.data.content
+                metadata = {
+                    "content_type": response.headers.get("Content-Type", "application/octet-stream"),
+                    "size": len(payload),
+                    "object_name": resolved_name,
+                    "retrieved_at": datetime.utcnow().isoformat(),
+                    "source": "oci",
+                }
+                return {"data": payload, "metadata": metadata}
+            except Exception:
+                # Fall back to local on any error
+                pass
+
+        # Use local fallback
+        local = self._load_local_file(resolved_name)
+        if local is None:
+            raise FileNotFoundError(
+                f"Could not locate {resolved_name}. Set LOCAL_ASSET_ROOT or provide a valid OCI configuration."
+            )
+        return local
+
+
+class VisionClient:
+    """Wrapper around OCI Vision deployments."""
+
+    def __init__(self, config: WorkflowConfig):
+        self._config = config
+        self._client = None
+
+    def _get_genai_client(self):
+        """Initialize OCI GenAI client for vision"""
+        if self._client is None:
+            try:
+                import oci
+                from oci.generative_ai_inference import GenerativeAiInferenceClient
+                
+                # Load OCI configuration
+                try:
+                    oci_config = oci.config.from_file()
+                except Exception as config_error:
+                    print(f"Warning: Could not load OCI config file: {config_error}")
+                    oci_config = oci.config.from_file("~/.oci/config")
+                
+                # Get GenAI configuration from environment
+                hostname = os.environ.get('OCI_GENAI_HOSTNAME')
+                if not hostname:
+                    raise ValueError("OCI_GENAI_HOSTNAME must be set")
+                
+                # Remove endpoint path if included in hostname
+                if '/20231130/actions/generateText' in hostname:
+                    hostname = hostname.replace('/20231130/actions/generateText', '')
+                
+                # Initialize GenAI client
+                self._client = GenerativeAiInferenceClient(
+                    config=oci_config,
+                    service_endpoint=hostname,
+                    retry_strategy=oci.retry.NoneRetryStrategy(),
+                    timeout=(10, 240)
+                )
+                
+            except Exception as e:
+                print(f"Error initializing OCI GenAI client: {e}")
+                raise RuntimeError(f"Failed to initialize OCI GenAI client: {e}")
+        
+        return self._client
+
+    def _damage_json_prompt(self) -> str:
+        """Return strict JSON-only prompt for damage assessment."""
+        return (
+            "You are a delivery damage inspector. Analyze the provided image and produce ONLY a single JSON object (no markdown, no preface, no trailing text) with this exact structure:\n\n"
+            "{\n"
+            "  \"overall\": { \"severity\": \"none|minor|moderate|severe\", \"score\": 0.0-1.0, \"rationale\": \"string\" },\n"
+            "  \"indicators\": {\n"
+            "    \"boxDeformation\": { \"present\": true|false, \"severity\": \"none|minor|moderate|severe\", \"evidence\": \"string\" },\n"
+            "    \"cornerDamage\":   { \"present\": true|false, \"severity\": \"none|minor|moderate|severe\", \"evidence\": \"string\" },\n"
+            "    \"leakage\":        { \"present\": true|false, \"severity\": \"none|minor|moderate|severe\", \"evidence\": \"string\" },\n"
+            "    \"packagingIntegrity\": { \"present\": true|false, \"severity\": \"none|minor|moderate|severe\", \"evidence\": \"string\" }\n"
+            "  },\n"
+            "  \"packageVisible\": true|false,\n"
+            "  \"uncertainties\": \"string\"\n"
+            "}\n\n"
+            "Definitions:\n"
+            "- boxDeformation: crushed corners, bent edges, bulging sides, structural collapse.\n"
+            "- cornerDamage: crushed/abraded/torn/dented corners.\n"
+            "- leakage: liquid stains, wet spots, moisture damage.\n"
+            "- packagingIntegrity: tears, holes, dents, scratches, tape failure.\n\n"
+            "Rules:\n"
+            "- If the package is not visible, set \"packageVisible\": false and \"overall.severity\": \"none\", \"overall.score\": 0.0 with rationale.\n"
+            "- If no damage is visible, set all indicators.present=false, severity=\"none\", evidence=\"none\", overall.severity=\"none\", overall.score<=0.1.\n"
+            "- Calibrate score by worst indicator: severe ≈ 0.9, moderate ≈ 0.6–0.7, minor ≈ 0.3–0.4, none ≤ 0.1.\n"
+            "- Keep evidence short and visual (what/where). Be precise, no speculation.\n"
+            "- If any of these keywords are observed: crushed, bent, bulging, tear, hole, dent, leak, wet, stain → minimum severity is 'minor' and score ≥ 0.3.\n"
+            "- Output MUST be valid JSON, UTF-8, no trailing commas, no extra commentary.\n\n"
+            "Now analyze the image and output the JSON only."
+        )
+
+    def _parse_damage_json(self, raw_text: str) -> Optional[Dict[str, Any]]:
+        """Parse a JSON report from model text; try substring recovery if needed."""
+        try:
+            return json.loads(raw_text)
+        except Exception:
+            start = raw_text.find("{")
+            end = raw_text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(raw_text[start : end + 1])
+                except Exception:
+                    return None
+            return None
+
+    def _caption_json_prompt(self) -> str:
+        """Return structured JSON prompt for delivery scene caption."""
+        return (
+            "You are a delivery scene analyzer. Analyze the provided image and produce ONLY a single JSON object (no markdown, no preface, no trailing text) with this exact structure:\n\n"
+            "{\n"
+            "  \"sceneType\": \"delivery|package|entrance|other\",\n"
+            "  \"packageVisible\": true|false,\n"
+            "  \"packageDescription\": \"string\",\n"
+            "  \"location\": {\n"
+            "    \"type\": \"doorstep|porch|mailbox|driveway|entrance|inside|other\",\n"
+            "    \"description\": \"string\"\n"
+            "  },\n"
+            "  \"environment\": {\n"
+            "    \"weather\": \"clear|rainy|cloudy|snowy|unknown\",\n"
+            "    \"timeOfDay\": \"morning|afternoon|evening|night|unknown\",\n"
+            "    \"conditions\": \"string\"\n"
+            "  },\n"
+            "  \"safetyAssessment\": {\n"
+            "    \"protected\": true|false,\n"
+            "    \"visible\": true|false,\n"
+            "    \"secure\": true|false,\n"
+            "    \"notes\": \"string\"\n"
+            "  },\n"
+            "  \"overallDescription\": \"string\"\n"
+            "}\n\n"
+            "Definitions:\n"
+            "- sceneType: primary scene category (delivery=package at destination, package=package only, entrance=door/entrance visible, other=none of these)\n"
+            "- packageVisible: whether any package/box/parcel is visible in the image\n"
+            "- packageDescription: short description of package(s) seen, or \"none\" if not visible\n"
+            "- location.type: where the package/scene is located\n"
+            "- location.description: brief description of the location (what you see)\n"
+            "- environment.weather: apparent weather conditions from visual cues\n"
+            "- environment.timeOfDay: estimated time based on lighting\n"
+            "- environment.conditions: brief description of environmental factors\n"
+            "- safetyAssessment.protected: is package sheltered from weather/elements\n"
+            "- safetyAssessment.visible: is package visible from street/public view\n"
+            "- safetyAssessment.secure: does location appear secure (not easily stolen)\n"
+            "- safetyAssessment.notes: brief assessment of delivery safety\n"
+            "- overallDescription: 2-3 sentence summary of the entire scene\n\n"
+            "Rules:\n"
+            "- If no package is visible, set packageVisible=false and packageDescription=\"none\", but still describe the scene.\n"
+            "- Keep descriptions factual and visual. No speculation about contents or ownership.\n"
+            "- For weather/time, use \"unknown\" if not clearly visible.\n"
+            "- Output MUST be valid JSON, UTF-8, no trailing commas, no extra commentary.\n\n"
+            "Now analyze the image and output the JSON only."
+        )
+
+    def generate_caption(self, image_bytes: bytes) -> str:
+        """Generate structured delivery scene caption using OCI GenAI Vision."""
+        try:
+            import oci
+            import base64
+            
+            # Get GenAI client
+            client = self._get_genai_client()
+            
+            # Encode image to base64
+            encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Get configuration
+            model_ocid = os.environ.get('OCI_TEXT_MODEL_OCID')
+            compartment_id = os.environ.get('OCI_COMPARTMENT_ID')
+            
+            if not model_ocid or not compartment_id:
+                return json.dumps({"error": "missing_credentials"})
+            
+            # Structured caption prompt
+            text_content = oci.generative_ai_inference.models.TextContent()
+            text_content.text = self._caption_json_prompt()
+            
+            # EXACT COPY from working console test - try ImageUrl first, fallback to source
+            try:
+                # Try to create ImageUrl structure (from console test)
+                image_url = oci.generative_ai_inference.models.ImageUrl()
+                image_url.url = f"data:image/jpeg;base64,{encoded_image}"
+                
+                # Create image content with ImageUrl
+                image_content = oci.generative_ai_inference.models.ImageContent()
+                image_content.image_url = image_url
+                
+            except Exception as e:
+                print(f"⚠️  ImageUrl structure not available: {e}")
+                # Fallback to source method (from console test)
+                image_content = oci.generative_ai_inference.models.ImageContent()
+                image_content.source = f"data:image/jpeg;base64,{encoded_image}"
+            
+            # EXACT COPY from working console test
+            message = oci.generative_ai_inference.models.Message()
+            message.role = "USER"
+            message.content = [text_content, image_content]  # Both text and image
+            
+            # Chat request with lower temperature for structured output
+            chat_request = oci.generative_ai_inference.models.GenericChatRequest()
+            chat_request.api_format = oci.generative_ai_inference.models.BaseChatRequest.API_FORMAT_GENERIC
+            chat_request.messages = [message]
+            chat_request.max_tokens = 800
+            chat_request.temperature = 0.2
+            chat_request.frequency_penalty = 0
+            chat_request.presence_penalty = 0
+            chat_request.top_p = 0.85
+            chat_request.top_k = -1
+            chat_request.is_stream = False
+            
+            # Serving mode
+            serving_mode = oci.generative_ai_inference.models.DedicatedServingMode(
+                endpoint_id=model_ocid
+            )
+            
+            # Chat details
+            chat_detail = oci.generative_ai_inference.models.ChatDetails()
+            chat_detail.serving_mode = serving_mode
+            chat_detail.chat_request = chat_request
+            chat_detail.compartment_id = compartment_id
+            
+            # Get response
+            response = client.chat(chat_detail)
+            
+            # Parse response and extract JSON
+            if (response.data and 
+                hasattr(response.data, 'chat_response') and 
+                response.data.chat_response and
+                hasattr(response.data.chat_response, 'choices') and 
+                response.data.chat_response.choices and
+                len(response.data.chat_response.choices) > 0 and
+                hasattr(response.data.chat_response.choices[0], 'message') and
+                response.data.chat_response.choices[0].message and
+                hasattr(response.data.chat_response.choices[0].message, 'content') and
+                response.data.chat_response.choices[0].message.content and
+                len(response.data.chat_response.choices[0].message.content) > 0):
+                
+                caption_text = response.data.chat_response.choices[0].message.content[0].text
+                
+                # Try to parse as JSON
+                caption_json = self._parse_damage_json(caption_text)
+                if caption_json is not None:
+                    return json.dumps(caption_json)
+                else:
+                    # Fallback: return raw text wrapped in JSON
+                    return json.dumps({"unstructured": caption_text})
+            else:
+                return json.dumps({"error": "no_caption_generated"})
+                
+        except Exception as e:
+            print(f"Error generating caption: {e}")
+            return json.dumps({"error": str(e)})
+
+    def detect_damage(self, image_bytes: bytes) -> Dict[str, Any]:
+        """Detect damage using GenAI with strict JSON output for indicators."""
+        try:
+            import oci
+            import base64
+            
+            # Get GenAI client
+            client = self._get_genai_client()
+            
+            # Encode image to base64
+            encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Get configuration
+            model_ocid = os.environ.get('OCI_TEXT_MODEL_OCID')
+            compartment_id = os.environ.get('OCI_COMPARTMENT_ID')
+            
+            if not model_ocid or not compartment_id:
+                return {"error": "missing_credentials"}
+            
+            # Strict JSON prompt for robust downstream parsing
+            text_content = oci.generative_ai_inference.models.TextContent()
+            text_content.text = self._damage_json_prompt()
+            
+            # EXACT COPY from working console test - try ImageUrl first, fallback to source
+            try:
+                # Try to create ImageUrl structure (from console test)
+                image_url = oci.generative_ai_inference.models.ImageUrl()
+                image_url.url = f"data:image/jpeg;base64,{encoded_image}"
+                
+                # Create image content with ImageUrl
+                image_content = oci.generative_ai_inference.models.ImageContent()
+                image_content.image_url = image_url
+                
+            except Exception as e:
+                print(f"⚠️  ImageUrl structure not available: {e}")
+                # Fallback to source method (from console test)
+                image_content = oci.generative_ai_inference.models.ImageContent()
+                image_content.source = f"data:image/jpeg;base64,{encoded_image}"
+            
+            # EXACT COPY from working console test
+            message = oci.generative_ai_inference.models.Message()
+            message.role = "USER"
+            message.content = [text_content, image_content]  # Both text and image
+            
+            # EXACT COPY from working console test
+            chat_request = oci.generative_ai_inference.models.GenericChatRequest()
+            chat_request.api_format = oci.generative_ai_inference.models.BaseChatRequest.API_FORMAT_GENERIC
+            chat_request.messages = [message]
+            chat_request.max_tokens = 800
+            chat_request.temperature = 0.1
+            chat_request.frequency_penalty = 0
+            chat_request.presence_penalty = 0
+            chat_request.top_p = 0.85
+            chat_request.top_k = -1
+            chat_request.is_stream = False
+            
+            # EXACT COPY from working console test
+            serving_mode = oci.generative_ai_inference.models.DedicatedServingMode(
+                endpoint_id=model_ocid
+            )
+            
+            # EXACT COPY from working console test
+            chat_detail = oci.generative_ai_inference.models.ChatDetails()
+            chat_detail.serving_mode = serving_mode
+            chat_detail.chat_request = chat_request
+            chat_detail.compartment_id = compartment_id
+            
+            # EXACT COPY from working console test
+            response = client.chat(chat_detail)
+            
+            # Parse JSON and extract only indicators
+            if (response.data and 
+                hasattr(response.data, 'chat_response') and 
+                response.data.chat_response and
+                hasattr(response.data.chat_response, 'choices') and 
+                response.data.chat_response.choices and
+                len(response.data.chat_response.choices) > 0 and
+                hasattr(response.data.chat_response.choices[0], 'message') and
+                response.data.chat_response.choices[0].message and
+                hasattr(response.data.chat_response.choices[0].message, 'content') and
+                response.data.chat_response.choices[0].message.content and
+                len(response.data.chat_response.choices[0].message.content) > 0):
+                
+                assessment = response.data.chat_response.choices[0].message.content[0].text
+                report = self._parse_damage_json(assessment)
+                
+                if report is not None:
+                    # Return complete report
+                    return report
+                else:
+                    # Fallback: return error if JSON parsing failed
+                    return {"error": "json_parse_failed"}
+
+            return {"error": "no_response"}
+            
+        except Exception as e:
+            print(f"Error detecting damage: {e}")
+            return {"error": str(e)}
+
+
+def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        exif_data_raw = img._getexif() or {}
+
+    exif_data: Dict[str, Any] = {}
+    for tag_id, value in exif_data_raw.items():
+        tag = ExifTags.TAGS.get(tag_id, tag_id)
+        exif_data[tag] = value
+
+    gps_info = exif_data.get("GPSInfo", {})
+    if gps_info:
+        gps_data = {}
+        for key, val in gps_info.items():
+            decoded_key = ExifTags.GPSTAGS.get(key, key)
+            gps_data[decoded_key] = val
+        exif_data["GPSInfo"] = gps_data
+
+    return exif_data
+
+
+class ObjectRetrievalTool(BaseTool):
+    name: str = "retrieve_delivery_photo"
+    description: str = "Fetch delivery photo bytes and metadata from OCI Object Storage."
+
+    def __init__(self, config: WorkflowConfig):
+        super().__init__()
+        self._config = config
+        self._client = ObjectStorageClient(config)
+
+    def _run(self, object_name: str) -> str:
+        result = self._client.get_object(object_name)
+        payload = base64.b64encode(result["data"]).decode("utf-8")
+        return json.dumps({"payload": payload, "metadata": result["metadata"]})
+
+    async def _arun(self, object_name: str) -> str:  # pragma: no cover - async not implemented
+        raise NotImplementedError
+
+
+class ExifExtractionTool(BaseTool):
+    name: str = "extract_exif"
+    description: str = "Extract EXIF metadata including GPS coordinates from a delivery image."
+
+    def _run(self, encoded_payload: str) -> str:
+        image_bytes = base64.b64decode(encoded_payload)
+        exif = extract_exif(image_bytes)
+        return json.dumps(exif, default=str)
+
+    async def _arun(self, encoded_payload: str) -> str:  # pragma: no cover - async not implemented
+        raise NotImplementedError
+
+
+class ImageCaptionTool(BaseTool):
+    name: str = "caption_image"
+    description: str = "Generate structured delivery scene analysis as JSON (sceneType, package, location, environment, safetyAssessment)."
+
+    def __init__(self, config: WorkflowConfig):
+        super().__init__()
+        self._client = VisionClient(config)
+
+    def _run(self, encoded_payload: str) -> str:
+        image_bytes = base64.b64decode(encoded_payload)
+        caption = self._client.generate_caption(image_bytes)
+        return caption
+
+    async def _arun(self, encoded_payload: str) -> str:  # pragma: no cover
+        raise NotImplementedError
+
+
+class DamageDetectionTool(BaseTool):
+    name: str = "detect_damage"
+    description: str = "Extract per-indicator damage assessment as JSON (boxDeformation, cornerDamage, leakage, packagingIntegrity)."
+
+    def __init__(self, config: WorkflowConfig):
+        super().__init__()
+        self._config = config
+        self._client = VisionClient(config)
+
+    def _run(self, encoded_payload: str) -> str:
+        image_bytes = base64.b64decode(encoded_payload)
+        result = self._client.detect_damage(image_bytes)
+        # detect_damage now returns indicators dict directly
+        return json.dumps(result)
+
+    async def _arun(self, encoded_payload: str) -> str:  # pragma: no cover
+        raise NotImplementedError
+
+
+def toolset(config: WorkflowConfig) -> Dict[str, BaseTool]:
+    """Factory returning all tools keyed by workflow stage."""
+
+    return {
+        "retrieval": ObjectRetrievalTool(config),
+        "exif": ExifExtractionTool(),
+        "caption": ImageCaptionTool(config),
+        "damage": DamageDetectionTool(config),
+    }
