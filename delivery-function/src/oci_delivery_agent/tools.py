@@ -31,8 +31,18 @@ class ObjectStorageClient:
         if oci is None:
             return None
         try:
-            oci_config = oci.config.from_file()
-            return oci.object_storage.ObjectStorageClient(oci_config)
+            # Force Instance Principal authentication
+            os.environ['OCI_CLI_AUTH'] = 'instance_principal'
+            
+            # Try Instance Principal authentication first
+            try:
+                from oci.auth.signers import InstancePrincipalsSecurityTokenSigner
+                signer = InstancePrincipalsSecurityTokenSigner()
+                return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
+            except Exception:
+                # Fallback to config file
+                oci_config = oci.config.from_file()
+                return oci.object_storage.ObjectStorageClient(oci_config)
         except Exception:
             return None
 

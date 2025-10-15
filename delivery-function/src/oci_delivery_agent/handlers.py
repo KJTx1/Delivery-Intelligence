@@ -50,6 +50,9 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     import oci
     from oci.generative_ai_inference import GenerativeAiInferenceClient
     
+    # Force Instance Principal authentication
+    os.environ['OCI_CLI_AUTH'] = 'instance_principal'
+    
     # Get configuration from environment
     hostname = os.environ.get("OCI_GENAI_HOSTNAME")
     model_ocid = os.environ.get("OCI_TEXT_MODEL_OCID")
@@ -69,51 +72,118 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     if '/20231130/actions/generateText' in hostname:
         hostname = hostname.replace('/20231130/actions/generateText', '')
     
-    # Load OCI configuration using environment variables
+    # Try Instance Principal authentication first (for OCI Functions)
+    signer = None
     try:
-        # Use environment variables for authentication
-        oci_config = {
-            'user': os.getenv('OCI_USER_ID'),
-            'fingerprint': os.getenv('OCI_FINGERPRINT'),
-            'key_file': None,  # We'll use the private key from env
-            'tenancy': os.getenv('OCI_TENANCY_ID'),
-            'region': os.getenv('OCI_REGION', 'us-ashburn-1'),
-            'pass_phrase': os.getenv('OCI_PASSPHRASE', '')
-        }
+        from oci.auth.signers import InstancePrincipalsSecurityTokenSigner
+        print("Attempting Instance Principal authentication...")
+        print("Creating InstancePrincipalsSecurityTokenSigner...")
+        signer = InstancePrincipalsSecurityTokenSigner()
+        print("✅ Instance Principal signer created successfully")
+        oci_config = {}  # Empty config for instance principal
+        print("✅ Instance Principal authentication successful")
+    except Exception as instance_error:
+        print(f"❌ Instance Principal failed: {instance_error}")
+        print(f"Instance Principal error type: {type(instance_error)}")
+        print("Instance Principal authentication is required - no fallback to environment variables")
+        raise ValueError(f"Instance Principal authentication failed: {instance_error}")
         
-        # Handle private key from environment variable
-        private_key_content = os.getenv('OCI_PRIVATE_KEY')
-        if private_key_content:
-            # Replace \n with actual newlines in the private key
-            private_key_content = private_key_content.replace('\\n', '\n')
-            # Create a temporary key file or use the content directly
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.pem') as key_file:
-                key_file.write(private_key_content)
-                oci_config['key_file'] = key_file.name
-            print("Using environment variable authentication")
-        else:
-            raise ValueError("No private key found in environment variables")
-            
-    except Exception as env_error:
-        print(f"Warning: Could not use environment variables: {env_error}")
-        # Fallback to config file for local development
-        try:
-            oci_config = oci.config.from_file()
-        except Exception as config_error:
-            try:
-                oci_config = oci.config.from_file("~/.oci/config")
-            except Exception as fallback_error:
-                raise ValueError(f"Could not load OCI configuration: {env_error}, {config_error}, {fallback_error}")
+        # # COMMENTED OUT: Environment variable authentication fallback
+        # # Fallback to environment variables
+        # try:
+        #     # Use environment variables for authentication
+        #     user_id = os.getenv('OCI_USER_ID')
+        #     fingerprint = os.getenv('OCI_FINGERPRINT')
+        #     tenancy_id = os.getenv('OCI_TENANCY_ID')
+        #     region = os.getenv('OCI_REGION', 'us-ashburn-1')
+        #     passphrase = os.getenv('OCI_PASSPHRASE', '')
+        #     
+        #     print(f"Environment variables:")
+        #     print(f"  OCI_USER_ID: {user_id[:20] if user_id else 'None'}...")
+        #     print(f"  OCI_FINGERPRINT: {fingerprint[:20] if fingerprint else 'None'}...")
+        #     print(f"  OCI_TENANCY_ID: {tenancy_id[:20] if tenancy_id else 'None'}...")
+        #     print(f"  OCI_REGION: {region}")
+        #     print(f"  OCI_PASSPHRASE: {'Set' if passphrase else 'Not set'}")
+        #     
+        #     oci_config = {
+        #         'user': user_id,
+        #         'fingerprint': fingerprint,
+        #         'key_file': None,  # We'll use the private key from env
+        #         'tenancy': tenancy_id,
+        #         'region': region,
+        #         'pass_phrase': passphrase
+        #     }
+        #     
+        #     # Handle private key from environment variable
+        #     private_key_content = os.getenv('OCI_PRIVATE_KEY')
+        #     if private_key_content:
+        #         # Debug: Print key info (first 50 chars only for security)
+        #         print(f"Private key found, length: {len(private_key_content)}")
+        #         print(f"Private key starts with: {private_key_content[:50]}")
+        #         
+        #         # Ensure proper formatting of the private key
+        #         # Replace \n with actual newlines in the private key
+        #         private_key_content = private_key_content.replace('\\n', '\n')
+        #         
+        #         # Ensure the key has proper line breaks
+        #         if not private_key_content.startswith('-----BEGIN'):
+        #             print("Warning: Private key doesn't start with -----BEGIN")
+        #         
+        #         # Check key type
+        #         if 'BEGIN PRIVATE KEY' in private_key_content:
+        #             print("Key type: PKCS#8 format")
+        #         elif 'BEGIN RSA PRIVATE KEY' in private_key_content:
+        #             print("Key type: RSA format")
+        #         elif 'BEGIN EC PRIVATE KEY' in private_key_content:
+        #             print("Key type: EC format - this may not be supported by OCI SDK")
+        #         else:
+        #             print("Key type: Unknown format")
+        #         
+        #         # Create a temporary key file or use the content directly
+        #         import tempfile
+        #         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.pem') as key_file:
+        #             key_file.write(private_key_content)
+        #             oci_config['key_file'] = key_file.name
+        #         print("Using environment variable authentication")
+        #     else:
+        #         print("No OCI_PRIVATE_KEY found in environment variables")
+        #         # List available environment variables for debugging
+        #         env_vars = [k for k in os.environ.keys() if 'OCI' in k]
+        #         print(f"Available OCI environment variables: {env_vars}")
+        #         raise ValueError("No private key found in environment variables")
+        #         
+        # except Exception as env_error:
+        #     print(f"Warning: Could not use environment variables: {env_error}")
+        #     # Fallback to config file for local development
+        #     try:
+        #         oci_config = oci.config.from_file()
+        #     except Exception as config_error:
+        #         try:
+        #             oci_config = oci.config.from_file("~/.oci/config")
+        #         except Exception as fallback_error:
+        #             raise ValueError(f"Could not load OCI configuration: {instance_error}, {env_error}, {config_error}, {fallback_error}")
     
     # Initialize Generative AI client
     try:
-        client = GenerativeAiInferenceClient(
-            config=oci_config,
-            service_endpoint=hostname,
-            retry_strategy=oci.retry.NoneRetryStrategy(),
-            timeout=(10, 240)
-        )
+        if signer is not None:
+            # Use Instance Principal authentication
+            print("Using Instance Principal authentication for Generative AI client")
+            client = GenerativeAiInferenceClient(
+                config=oci_config,
+                signer=signer,
+                service_endpoint=hostname,
+                retry_strategy=oci.retry.NoneRetryStrategy(),
+                timeout=(10, 240)
+            )
+        else:
+            # Use traditional config authentication
+            print("Using traditional config authentication for Generative AI client")
+            client = GenerativeAiInferenceClient(
+                config=oci_config,
+                service_endpoint=hostname,
+                retry_strategy=oci.retry.NoneRetryStrategy(),
+                timeout=(10, 240)
+            )
     except Exception as client_error:
         raise RuntimeError(f"Failed to initialize OCI Generative AI client: {client_error}")
     
@@ -210,27 +280,8 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     return OCIGenAIModel(client, model_ocid, compartment_id)
 
 
-def handler(ctx: Any, data: Any) -> Dict[str, Any]:
-    # Handle different data types
-    if isinstance(data, dict):
-        # Data is already a dictionary
-        payload = data
-    elif hasattr(data, 'read'):
-        # BytesIO object
-        data_bytes = data.read()
-        payload = json.loads(data_bytes.decode("utf-8"))
-    elif isinstance(data, bytes):
-        # Already bytes
-        data_bytes = data
-        payload = json.loads(data_bytes.decode("utf-8"))
-    elif isinstance(data, str):
-        # String data
-        data_bytes = data.encode('utf-8')
-        payload = json.loads(data_bytes.decode("utf-8"))
-    else:
-        # Try to convert to string first
-        data_bytes = str(data).encode('utf-8')
-        payload = json.loads(data_bytes.decode("utf-8"))
+def handler(ctx: Any, data: bytes) -> Dict[str, Any]:
+    payload = json.loads(data.decode("utf-8"))
     object_name = payload["data"]["resourceName"]
     event_time = payload["eventTime"]
 
