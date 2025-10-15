@@ -92,11 +92,40 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
         raise RuntimeError(f"Failed to initialize OCI Generative AI client: {client_error}")
     
     # Create custom LLM wrapper for OCI GenAI chat API
-    class OCIGenAIModel:
+    from langchain_core.language_models import BaseLLM
+    from langchain_core.callbacks import CallbackManagerForLLMRun
+    from typing import Any, List, Optional
+    
+    class OCIGenAIModel(BaseLLM):
+        client: Any = None
+        model_ocid: str = ""
+        compartment_id: str = ""
+        
         def __init__(self, client, model_ocid, compartment_id):
-            self.client = client
-            self.model_ocid = model_ocid
-            self.compartment_id = compartment_id
+            super().__init__(
+                client=client,
+                model_ocid=model_ocid,
+                compartment_id=compartment_id
+            )
+        
+        @property
+        def _llm_type(self) -> str:
+            return "oci_genai"
+        
+        def _generate(
+            self,
+            prompts: List[str],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+        ) -> Any:
+            """Generate responses for multiple prompts."""
+            from langchain_core.outputs import LLMResult, Generation
+            generations = []
+            for prompt in prompts:
+                text = self.generate(prompt, **kwargs)
+                generations.append([Generation(text=text)])
+            return LLMResult(generations=generations)
         
         def generate(self, prompt: str, **kwargs) -> str:
             """Generate text using OCI GenAI chat API"""

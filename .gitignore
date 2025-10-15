@@ -8,3 +8,4 @@ __pycache__/
 *.pfx
 config
 credentials
+venv/
