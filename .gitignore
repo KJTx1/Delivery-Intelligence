@@ -10,9 +10,6 @@ config
 credentials
 venv/
 
-# Deployment directories (generated copies)
-delivery-function/src/
-
 # Deployment artifacts (generated files)
 function.zip
 *.zip
