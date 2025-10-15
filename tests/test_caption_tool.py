@@ -10,7 +10,7 @@ import json
 from dotenv import load_dotenv
 
 # Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 def test_caption_tool():
     """Test the ImageCaptionTool with GenAI Vision"""
