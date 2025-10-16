@@ -10,7 +10,22 @@ import json
 import subprocess
 import shutil
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - fallback when python-dotenv absent
+    def load_dotenv(path: str) -> None:
+        """Minimal .env loader used when python-dotenv is unavailable."""
+        env_path = Path(path)
+        if not env_path.exists():
+            print(f"⚠️  Could not locate {path}; using process environment only.")
+            return
+        print("⚠️  python-dotenv not installed; using lightweight .env parser.")
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
 
 def load_config():
     """Load configuration from environment"""

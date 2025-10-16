@@ -11,7 +11,7 @@ class ObjectStorageConfig:
 
     namespace: str
     bucket_name: str
-    delivery_prefix: str = "deliveries/"
+    delivery_prefix: str = ""
 
 
 @dataclass

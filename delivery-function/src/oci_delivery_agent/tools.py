@@ -31,18 +31,31 @@ class ObjectStorageClient:
         if oci is None:
             return None
         try:
-            # Force Instance Principal authentication
-            os.environ['OCI_CLI_AUTH'] = 'instance_principal'
-            
-            # Try Instance Principal authentication first
+            signer = None
+            config: Dict[str, Any] = {}
             try:
-                from oci.auth.signers import InstancePrincipalsSecurityTokenSigner
-                signer = InstancePrincipalsSecurityTokenSigner()
-                return oci.object_storage.ObjectStorageClient(config={}, signer=signer)
-            except Exception:
-                # Fallback to config file
-                oci_config = oci.config.from_file()
-                return oci.object_storage.ObjectStorageClient(oci_config)
+                from oci.auth.signers import get_resource_principals_signer
+
+                signer = get_resource_principals_signer()
+                signer_region = getattr(signer, "region", None)
+                resolved_region = os.environ.get("OCI_REGION") or signer_region or "us-ashburn-1"
+                config = {"region": resolved_region}
+                print(f"Using resource principal authentication for Object Storage client (region={resolved_region})")
+            except Exception as rp_error:
+                print(f"Resource principal signer unavailable for Object Storage: {rp_error}")
+                try:
+                    config = oci.config.from_file()
+                    print("Falling back to local OCI configuration for Object Storage")
+                except Exception as config_error:
+                    try:
+                        config = oci.config.from_file("~/.oci/config")
+                        print("Using ~/.oci/config for Object Storage client")
+                    except Exception:
+                        return None
+
+            if signer is not None:
+                return oci.object_storage.ObjectStorageClient(config=config, signer=signer)
+            return oci.object_storage.ObjectStorageClient(config)
         except Exception:
             return None
 
@@ -119,13 +132,31 @@ class VisionClient:
             try:
                 import oci
                 from oci.generative_ai_inference import GenerativeAiInferenceClient
+                from oci.auth.signers import get_resource_principals_signer
                 
                 # Load OCI configuration
+                signer = None
+                oci_config: Dict[str, Any] = {}
                 try:
-                    oci_config = oci.config.from_file()
-                except Exception as config_error:
-                    print(f"Warning: Could not load OCI config file: {config_error}")
-                    oci_config = oci.config.from_file("~/.oci/config")
+                    signer = get_resource_principals_signer()
+                    signer_region = getattr(signer, "region", None)
+                    resolved_region = os.environ.get("OCI_REGION") or signer_region or "us-ashburn-1"
+                    oci_config = {"region": resolved_region}
+                    print(f"Using resource principal authentication for GenAI vision client (region={resolved_region})")
+                except Exception as err:
+                    print(f"Resource principal signer unavailable for GenAI client: {err}")
+                    try:
+                        oci_config = oci.config.from_file()
+                        print("Falling back to local OCI configuration for GenAI client")
+                    except Exception as config_error:
+                        try:
+                            oci_config = oci.config.from_file("~/.oci/config")
+                            print("Using ~/.oci/config for GenAI client")
+                        except Exception as fallback_error:
+                            raise RuntimeError(
+                                "Failed to initialize OCI authentication for GenAI client"
+                            ) from fallback_error
+                    signer = None
                 
                 # Get GenAI configuration from environment
                 hostname = os.environ.get('OCI_GENAI_HOSTNAME')
@@ -137,12 +168,21 @@ class VisionClient:
                     hostname = hostname.replace('/20231130/actions/generateText', '')
                 
                 # Initialize GenAI client
-                self._client = GenerativeAiInferenceClient(
-                    config=oci_config,
-                    service_endpoint=hostname,
-                    retry_strategy=oci.retry.NoneRetryStrategy(),
-                    timeout=(10, 240)
-                )
+                if signer is not None:
+                    self._client = GenerativeAiInferenceClient(
+                        config=oci_config,
+                        signer=signer,
+                        service_endpoint=hostname,
+                        retry_strategy=oci.retry.NoneRetryStrategy(),
+                        timeout=(10, 240)
+                    )
+                else:
+                    self._client = GenerativeAiInferenceClient(
+                        config=oci_config,
+                        service_endpoint=hostname,
+                        retry_strategy=oci.retry.NoneRetryStrategy(),
+                        timeout=(10, 240)
+                    )
                 
             except Exception as e:
                 print(f"Error initializing OCI GenAI client: {e}")
@@ -444,20 +484,84 @@ def extract_exif(image_bytes: bytes) -> Dict[str, Any]:
     with Image.open(io.BytesIO(image_bytes)) as img:
         exif_data_raw = img._getexif() or {}
 
-    exif_data: Dict[str, Any] = {}
+    raw_gps = None
+    timestamp = None
     for tag_id, value in exif_data_raw.items():
         tag = ExifTags.TAGS.get(tag_id, tag_id)
-        exif_data[tag] = value
+        if tag == "GPSInfo":
+            raw_gps = value
+        elif tag in {"DateTimeOriginal", "DateTime"} and not timestamp:
+            timestamp = value
 
-    gps_info = exif_data.get("GPSInfo", {})
-    if gps_info:
-        gps_data = {}
-        for key, val in gps_info.items():
-            decoded_key = ExifTags.GPSTAGS.get(key, key)
-            gps_data[decoded_key] = val
-        exif_data["GPSInfo"] = gps_data
+    def _to_float(component: Any) -> Optional[float]:
+        if component is None:
+            return None
+        if isinstance(component, (int, float)):
+            return float(component)
+        if hasattr(component, "numerator") and hasattr(component, "denominator"):
+            denom = component.denominator
+            return component.numerator / denom if denom else None
+        if isinstance(component, (tuple, list)):
+            if len(component) == 2:
+                numerator = _to_float(component[0])
+                denominator = _to_float(component[1])
+                if numerator is None or denominator in (None, 0):
+                    return None
+                return numerator / denominator
+            return None
+        if isinstance(component, str):
+            try:
+                return float(component)
+            except ValueError:
+                if "/" in component:
+                    num, denom = component.split("/", 1)
+                    try:
+                        return float(num) / float(denom)
+                    except (ValueError, ZeroDivisionError):
+                        return None
+                return None
+        try:
+            return float(component)
+        except Exception:
+            return None
 
-    return exif_data
+    def _convert_to_degrees(values: List[Any]) -> Optional[float]:
+        if not values or len(values) < 3:
+            return None
+        deg = _to_float(values[0])
+        minutes = _to_float(values[1])
+        seconds = _to_float(values[2])
+        if None in (deg, minutes, seconds):
+            return None
+        return deg + minutes / 60 + seconds / 3600
+
+    gps_payload: Dict[str, Any] = {}
+    if raw_gps:
+        gps_named = {
+            ExifTags.GPSTAGS.get(key, key): value for key, value in raw_gps.items()
+        }
+        lat = _convert_to_degrees(gps_named.get("GPSLatitude", []))
+        lon = _convert_to_degrees(gps_named.get("GPSLongitude", []))
+        lat_ref = gps_named.get("GPSLatitudeRef")
+        lon_ref = gps_named.get("GPSLongitudeRef")
+        if lat is not None and lat_ref == "S":
+            lat = -lat
+        if lon is not None and lon_ref == "W":
+            lon = -lon
+        if lat is not None and lon is not None:
+            gps_payload["latitude"] = lat
+            gps_payload["longitude"] = lon
+        altitude = _to_float(gps_named.get("GPSAltitude"))
+        if altitude is not None:
+            gps_payload["altitude"] = altitude
+
+    clean_exif: Dict[str, Any] = {}
+    if gps_payload:
+        clean_exif["GPSInfo"] = gps_payload
+    if timestamp:
+        clean_exif["timestamp"] = timestamp
+
+    return clean_exif
 
 
 class ObjectRetrievalTool(BaseTool):
