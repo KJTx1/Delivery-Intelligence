@@ -45,17 +45,10 @@ def compute_location_accuracy(exif: Mapping[str, Any], context: DeliveryContext,
     gps_info = exif.get("GPSInfo", {})
     if not gps_info:
         return 0.0
-
-    def _convert_to_degrees(values: List[Any]) -> float:
-        deg, minutes, seconds = values
-        return deg[0] / deg[1] + minutes[0] / minutes[1] / 60 + seconds[0] / seconds[1] / 3600
-
-    lat = _convert_to_degrees(gps_info["GPSLatitude"])
-    lon = _convert_to_degrees(gps_info["GPSLongitude"])
-    if gps_info.get("GPSLatitudeRef") == "S":
-        lat = -lat
-    if gps_info.get("GPSLongitudeRef") == "W":
-        lon = -lon
+    lat = gps_info.get("latitude")
+    lon = gps_info.get("longitude")
+    if lat is None or lon is None:
+        return 0.0
 
     # Basic Haversine implementation
     from math import asin, cos, radians, sin, sqrt
@@ -121,7 +114,8 @@ def build_workflow_chain(config: WorkflowConfig, llm: BaseLLM) -> SequentialChai
             "Caption summary: {caption_summary}.\n"
             "Quality metrics: {quality_metrics}.\n"
             "Respond with a JSON object containing keys 'status' (OK or Review),\n"
-            "'issues' (list of strings), and 'insights' (string)."
+            "'issues' (list of strings), and 'insights' (string).\n"
+            "Output ONLY raw JSON (no code fences, no markdown, no extra commentary)."
         ),
     )
     review_chain = LLMChain(prompt=prompt, llm=llm, output_key="agent_assessment")
@@ -149,10 +143,12 @@ def run_quality_pipeline(
     
     # Get structured caption JSON
     caption_json = tools["caption"].run(encoded_payload)
-    caption_summary = build_caption_chain(llm).run(
-        metadata=json.dumps(retrieval_output["metadata"]),
-        caption_json=caption_json,
-    )
+    caption_summary = build_caption_chain(llm).invoke(
+        {
+            "metadata": json.dumps(retrieval_output["metadata"]),
+            "caption_json": caption_json,
+        }
+    )["caption_summary"]
     
     # Get structured damage report JSON
     damage_report = json.loads(tools["damage"].run(encoded_payload))
@@ -167,13 +163,22 @@ def run_quality_pipeline(
     )
 
     workflow_chain = build_workflow_chain(config, llm)
-    assessment = workflow_chain.run(
-        metadata=json.dumps(retrieval_output["metadata"]),
-        caption_summary=caption_summary,
-        quality_metrics=json.dumps(quality_metrics),
-    )
+    assessment = workflow_chain.invoke(
+        {
+            "metadata": json.dumps(retrieval_output["metadata"]),
+            "caption_summary": caption_summary,
+            "quality_metrics": json.dumps(quality_metrics),
+        }
+    )["agent_assessment"]
+    assessment_clean = assessment.strip()
+    if assessment_clean.startswith("```"):
+        lines = [
+            line for line in assessment_clean.splitlines()
+            if not line.strip().startswith("```")
+        ]
+        assessment_clean = "\n".join(lines).strip()
     try:
-        assessment_payload = json.loads(assessment)
+        assessment_payload = json.loads(assessment_clean)
     except json.JSONDecodeError:
         assessment_payload = {
             "status": "Review",
