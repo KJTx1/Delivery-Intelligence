@@ -29,9 +29,10 @@ cd delivery-function
 fn -v deploy --app delivery-agent-app
 ```
 
-### Method 2: Automated Script
+### Method 2: Manual OCI CLI (Alternative)
 ```bash
-python3 build_and_deploy.py
+# Use OCI CLI directly for deployment
+oci fn function deploy --function-id <FUNCTION_ID> --image <IMAGE_URI>
 ```
 
 ## Configuration
@@ -75,7 +76,6 @@ Upload delivery images to your Object Storage bucket to trigger automatic qualit
 │   ├── architecture.md              # System architecture
 │   ├── genai-implementation.md      # GenAI implementation details
 │   └── deployment-guide.md          # Complete deployment guide
-├── build_and_deploy.py              # Complete build and deployment script
 └── env.example                     # Environment configuration template
 ```
 

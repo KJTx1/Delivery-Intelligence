@@ -14,7 +14,7 @@ The OCI Generative AI service provides access to large language models through t
 ### **Required Environment Variables:**
 ```bash
 # OCI Generative AI Configuration
-OCI_TEXT_MODEL_OCID=ocid1.generativeai.oc1..your_model_id
+OCI_TEXT_MODEL_OCID=<YOUR_ENDPOINT_OCID>
 OCI_GENAI_ENDPOINT=https://generativeai.oci.oraclecloud.com/20231130/endpoints
 
 # Optional: Dedicated serving endpoint
@@ -173,7 +173,7 @@ RISK LEVEL: LOW - Acceptable delivery with minor improvements needed
 ### **Dynamic Group Matching Rule:**
 ```
 resource.type = 'fnfunc' 
-resource.compartment.id = 'ocid1.compartment.oc1..your_compartment_id'
+resource.compartment.id = '<YOUR_COMPARTMENT_ID>'
 ```
 
 ## 🧪 Testing OCI GenAI Integration

@@ -31,7 +31,7 @@ fn --version
 # Create Fn Project context for OCI
 fn create context oci --api-url https://functions.us-ashburn-1.oci.oraclecloud.com
 fn use context oci
-fn update context registry iad.ocir.io/<YOUR_NAMESPACE>
+fn update context registry <YOUR_REGION>.ocir.io/<YOUR_NAMESPACE>
 fn update context compartment-id <YOUR_COMPARTMENT_ID>
 ```
 
@@ -93,7 +93,7 @@ oci fn application create \
 oci fn function create \
   --application-id <YOUR_APPLICATION_ID> \
   --display-name delivery-quality-function \
-  --image iad.ocir.io/<YOUR_NAMESPACE>/delivery-agent:latest \
+  --image <YOUR_REGION>.ocir.io/<YOUR_NAMESPACE>/delivery-agent:latest \
   --memory-in-mbs 1024 \
   --timeout-in-seconds 300
 ```

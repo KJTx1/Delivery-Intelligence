@@ -27,15 +27,15 @@ OCI_OS_NAMESPACE=your_oci_namespace
 OCI_OS_BUCKET=your_delivery_bucket
 
 # Compartment and AI Services
-OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your_compartment_id
-OCI_TEXT_MODEL_OCID=ocid1.generativeai.oc1..your_model_id
+OCI_COMPARTMENT_ID=<YOUR_COMPARTMENT_ID>
+OCI_TEXT_MODEL_OCID=<YOUR_ENDPOINT_OCID>
 
 # Vision Services (optional for local testing)
 OCI_CAPTION_ENDPOINT=https://vision.oci.oraclecloud.com/20220125/analyzeImage
 OCI_DAMAGE_ENDPOINT=https://vision.oci.oraclecloud.com/20220125/analyzeImage
 
 # Notification Service
-NOTIFICATION_TOPIC_ID=ocid1.onstopic.oc1..your_topic_id
+NOTIFICATION_TOPIC_ID=<YOUR_TOPIC_ID>
 ```
 
 ## Setup Instructions
@@ -77,8 +77,8 @@ For production deployment, replace dummy values with real OCI resource IDs:
 # Real OCI values
 OCI_OS_NAMESPACE=your_actual_namespace
 OCI_OS_BUCKET=your_actual_bucket
-OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your_actual_compartment_id
-OCI_TEXT_MODEL_OCID=ocid1.generativeai.oc1..your_actual_model_id
+OCI_COMPARTMENT_ID=<YOUR_ACTUAL_COMPARTMENT_ID>
+OCI_TEXT_MODEL_OCID=<YOUR_ACTUAL_ENDPOINT_OCID>
 # ... etc
 ```
 

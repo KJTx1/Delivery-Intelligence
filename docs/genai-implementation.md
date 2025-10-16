@@ -23,8 +23,8 @@ Object Storage Image → Base64 Encoding → GenAI Vision API → Structured JSO
 
 ### Required Environment Variables
 ```bash
-OCI_COMPARTMENT_ID=ocid1.compartment.oc1..xxxxx
-OCI_TEXT_MODEL_OCID=ocid1.generativeaiendpoint.oc1.xxxxx  # Endpoint OCID
+OCI_COMPARTMENT_ID=<YOUR_COMPARTMENT_ID>
+OCI_TEXT_MODEL_OCID=<YOUR_ENDPOINT_OCID>  # Endpoint OCID
 OCI_GENAI_HOSTNAME=https://inference.generativeai.us-chicago-1.oci.oraclecloud.com
 ```
 

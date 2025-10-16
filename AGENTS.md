@@ -4,7 +4,7 @@
 Core agent logic resides in `src/oci_delivery_agent`, with `handlers.py` providing the OCI Function entry point, `chains.py` defining the LangChain workflows, `tools.py` wrapping OCI services, and `config.py` managing typed settings. The deployable Fn Function scaffold lives in `delivery-function/` (notably `func.py`, `func.yaml`, and its `requirements.txt` mirror). Shared docs are under `docs/`, reference assets in `local_assets/`, and smoke tests in `tests/`. Keep new modules colocated with their runtime peers and mirror any additions into the Fn bundle when they are required in production.
 
 ## Build, Test, and Development Commands
-- `python3 build_and_deploy.py` packages the source, syncs it into `delivery-function/`, and triggers an Fn deploy.
+- `fn -v deploy --app delivery-agent-app` deploys the function using Fn Project CLI.
 - `cd delivery-function && fn -v deploy --app delivery-agent-app` performs a manual deploy using the Fn CLI context.
 - `python -m pytest tests/` runs the lightweight regression suite; prefer the `-k` flag when targeting a single tool.
 - `python tests/test_caption_tool.py` exercises the caption and damage tools end to end with local fallbacks.
