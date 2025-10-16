@@ -3,6 +3,12 @@ import json
 import sys
 import os
 
+# Ensure src/ modules are importable when running in OCI Functions
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_PATH = os.path.join(CURRENT_DIR, "src")
+if SRC_PATH not in sys.path:
+    sys.path.insert(0, SRC_PATH)
+
 def handler(ctx, data=None):
     """
     OCI Function handler for delivery quality assessment.
@@ -70,46 +76,80 @@ def handler(ctx, data=None):
                 }
         
         elif test_type == "auth":
-            # Test Instance Principal authentication with timeout
+            # Test Resource Principal authentication with timeout
             try:
                 import signal
-                from oci.auth.signers import InstancePrincipalsSecurityTokenSigner
+                from oci.auth.signers import get_resource_principals_signer
                 
                 def timeout_handler(signum, frame):
-                    raise TimeoutError("Instance Principal authentication timed out")
+                    raise TimeoutError("Resource Principal authentication timed out")
                 
                 # Set a 10-second timeout
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(10)
                 
-                print("Testing Instance Principal authentication...")
-                signer = InstancePrincipalsSecurityTokenSigner()
-                print("✅ Instance Principal signer created successfully!")
+                print("Testing Resource Principal authentication...")
+                signer = get_resource_principals_signer()
+                print("✅ Resource Principal signer created successfully!")
+                _ = signer.region  # Access attribute to ensure signer is fully initialized
                 
                 # Cancel the alarm
                 signal.alarm(0)
                 
                 return {
-                    "message": "Instance Principal authentication successful!",
+                    "message": "Resource Principal authentication successful!",
                     "status": "success", 
                     "test_type": "auth",
-                    "auth_method": "instance_principal"
+                    "auth_method": "resource_principal"
                 }
             except TimeoutError:
-                print("❌ Instance Principal authentication timed out")
+                print("❌ Resource Principal authentication timed out")
                 return {
-                    "error": "Instance Principal authentication timed out after 10 seconds",
+                    "error": "Resource Principal authentication timed out after 10 seconds",
                     "status": "error",
                     "test_type": "auth"
                 }
             except Exception as e:
-                print(f"❌ Instance Principal failed: {e}")
+                print(f"❌ Resource Principal failed: {e}")
                 return {
-                    "error": f"Instance Principal authentication failed: {e}",
+                    "error": f"Resource Principal authentication failed: {e}",
                     "status": "error",
                     "test_type": "auth"
                 }
         
+        elif test_type == "extract":
+            from oci_delivery_agent.handlers import load_config
+            from oci_delivery_agent.tools import ObjectRetrievalTool, ExifExtractionTool
+
+            object_name = (
+                request.get("object_name")
+                or request.get("data", {}).get("resourceName")
+            )
+            if not object_name:
+                return {
+                    "error": "object_name missing from request",
+                    "status": "error",
+                    "test_type": "extract",
+                }
+
+            config = load_config()
+            retrieval_tool = ObjectRetrievalTool(config)
+            retrieval_result = json.loads(retrieval_tool._run(object_name))
+
+            exif_tool = ExifExtractionTool()
+            exif_data = json.loads(exif_tool._run(retrieval_result["payload"]))
+
+            gps_info = exif_data.get("GPSInfo", {})
+
+            return {
+                "status": "success",
+                "test_type": "extract",
+                "object_name": object_name,
+                "metadata": retrieval_result["metadata"],
+                "gps": gps_info,
+                "exif": exif_data,
+            }
+
         else:
             # Full delivery agent test
             from oci_delivery_agent.handlers import handler as delivery_handler

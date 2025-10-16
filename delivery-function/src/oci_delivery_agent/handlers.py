@@ -23,7 +23,7 @@ def load_config() -> WorkflowConfig:
         object_storage=ObjectStorageConfig(
             namespace=os.environ.get("OCI_OS_NAMESPACE", ""),
             bucket_name=os.environ.get("OCI_OS_BUCKET", ""),
-            delivery_prefix=os.environ.get("DELIVERY_PREFIX", "deliveries/"),
+            delivery_prefix=os.environ.get("DELIVERY_PREFIX", ""),
         ),
         vision=VisionConfig(
             compartment_id=os.environ.get("OCI_COMPARTMENT_ID", ""),
@@ -54,6 +54,7 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     hostname = os.environ.get("OCI_GENAI_HOSTNAME")
     model_ocid = os.environ.get("OCI_TEXT_MODEL_OCID")
     compartment_id = os.environ.get("OCI_COMPARTMENT_ID")
+    region = os.environ.get("OCI_REGION")
     
     if not hostname:
         raise ValueError("OCI_GENAI_HOSTNAME must be set")
@@ -69,51 +70,50 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     if '/20231130/actions/generateText' in hostname:
         hostname = hostname.replace('/20231130/actions/generateText', '')
     
-    # Load OCI configuration using environment variables
+    signer = None
+    oci_config: Dict[str, Any] = {}
     try:
-        # Use environment variables for authentication
-        oci_config = {
-            'user': os.getenv('OCI_USER_ID'),
-            'fingerprint': os.getenv('OCI_FINGERPRINT'),
-            'key_file': None,  # We'll use the private key from env
-            'tenancy': os.getenv('OCI_TENANCY_ID'),
-            'region': os.getenv('OCI_REGION', 'us-ashburn-1'),
-            'pass_phrase': os.getenv('OCI_PASSPHRASE', '')
-        }
-        
-        # Handle private key from environment variable
-        private_key_content = os.getenv('OCI_PRIVATE_KEY')
-        if private_key_content:
-            # Replace \n with actual newlines in the private key
-            private_key_content = private_key_content.replace('\\n', '\n')
-            # Create a temporary key file or use the content directly
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.pem') as key_file:
-                key_file.write(private_key_content)
-                oci_config['key_file'] = key_file.name
-            print("Using environment variable authentication")
-        else:
-            raise ValueError("No private key found in environment variables")
-            
-    except Exception as env_error:
-        print(f"Warning: Could not use environment variables: {env_error}")
-        # Fallback to config file for local development
+        from oci.auth.signers import get_resource_principals_signer
+
+        signer = get_resource_principals_signer()
+        signer_region = getattr(signer, "region", None)
+        resolved_region = region or signer_region or "us-ashburn-1"
+        if resolved_region:
+            os.environ.setdefault("OCI_REGION", resolved_region)
+            oci_config = {"region": resolved_region}
+        print(f"Using resource principal authentication for Generative AI client (region={resolved_region})")
+    except Exception as rp_error:
+        print(f"Resource principal signer unavailable: {rp_error}")
         try:
             oci_config = oci.config.from_file()
+            print("Falling back to local OCI configuration file")
         except Exception as config_error:
             try:
                 oci_config = oci.config.from_file("~/.oci/config")
+                print("Falling back to ~/.oci/config")
             except Exception as fallback_error:
-                raise ValueError(f"Could not load OCI configuration: {env_error}, {config_error}, {fallback_error}")
+                raise ValueError(
+                    "Could not initialize OCI authentication via resource principals or config files"
+                ) from fallback_error
+        signer = None
     
     # Initialize Generative AI client
     try:
-        client = GenerativeAiInferenceClient(
-            config=oci_config,
-            service_endpoint=hostname,
-            retry_strategy=oci.retry.NoneRetryStrategy(),
-            timeout=(10, 240)
-        )
+        if signer is not None:
+            client = GenerativeAiInferenceClient(
+                config=oci_config,
+                signer=signer,
+                service_endpoint=hostname,
+                retry_strategy=oci.retry.NoneRetryStrategy(),
+                timeout=(10, 240)
+            )
+        else:
+            client = GenerativeAiInferenceClient(
+                config=oci_config,
+                service_endpoint=hostname,
+                retry_strategy=oci.retry.NoneRetryStrategy(),
+                timeout=(10, 240)
+            )
     except Exception as client_error:
         raise RuntimeError(f"Failed to initialize OCI Generative AI client: {client_error}")
     
@@ -149,11 +149,17 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
             from langchain_core.outputs import LLMResult, Generation
             generations = []
             for prompt in prompts:
-                text = self.generate(prompt, **kwargs)
+                text = self._call(prompt, stop=stop, run_manager=run_manager, **kwargs)
                 generations.append([Generation(text=text)])
             return LLMResult(generations=generations)
         
-        def generate(self, prompt: str, **kwargs) -> str:
+        def _call(
+            self,
+            prompt: str,
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+        ) -> str:
             """Generate text using OCI GenAI chat API"""
             try:
                 # Create content and message
@@ -210,27 +216,8 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
     return OCIGenAIModel(client, model_ocid, compartment_id)
 
 
-def handler(ctx: Any, data: Any) -> Dict[str, Any]:
-    # Handle different data types
-    if isinstance(data, dict):
-        # Data is already a dictionary
-        payload = data
-    elif hasattr(data, 'read'):
-        # BytesIO object
-        data_bytes = data.read()
-        payload = json.loads(data_bytes.decode("utf-8"))
-    elif isinstance(data, bytes):
-        # Already bytes
-        data_bytes = data
-        payload = json.loads(data_bytes.decode("utf-8"))
-    elif isinstance(data, str):
-        # String data
-        data_bytes = data.encode('utf-8')
-        payload = json.loads(data_bytes.decode("utf-8"))
-    else:
-        # Try to convert to string first
-        data_bytes = str(data).encode('utf-8')
-        payload = json.loads(data_bytes.decode("utf-8"))
+def handler(ctx: Any, data: bytes) -> Dict[str, Any]:
+    payload = json.loads(data.decode("utf-8"))
     object_name = payload["data"]["resourceName"]
     event_time = payload["eventTime"]
 

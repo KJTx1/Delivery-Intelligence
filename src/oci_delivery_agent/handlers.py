@@ -23,7 +23,7 @@ def load_config() -> WorkflowConfig:
         object_storage=ObjectStorageConfig(
             namespace=os.environ.get("OCI_OS_NAMESPACE", ""),
             bucket_name=os.environ.get("OCI_OS_BUCKET", ""),
-            delivery_prefix=os.environ.get("DELIVERY_PREFIX", "deliveries/"),
+            delivery_prefix=os.environ.get("DELIVERY_PREFIX", ""),
         ),
         vision=VisionConfig(
             compartment_id=os.environ.get("OCI_COMPARTMENT_ID", ""),
@@ -123,11 +123,17 @@ def build_llm(config: WorkflowConfig) -> OCIModel:
             from langchain_core.outputs import LLMResult, Generation
             generations = []
             for prompt in prompts:
-                text = self.generate(prompt, **kwargs)
+                text = self._call(prompt, stop=stop, run_manager=run_manager, **kwargs)
                 generations.append([Generation(text=text)])
             return LLMResult(generations=generations)
         
-        def generate(self, prompt: str, **kwargs) -> str:
+        def _call(
+            self,
+            prompt: str,
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+        ) -> str:
             """Generate text using OCI GenAI chat API"""
             try:
                 # Create content and message
