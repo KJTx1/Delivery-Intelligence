@@ -11,6 +11,51 @@ This guide explains how to deploy the OCI Delivery Agent to OCI Functions using 
 5. **VCN with subnets** for function deployment
 6. **IAM policies** for Generative AI access
 
+## Project Structure
+
+The project is organized into development and production environments:
+
+```
+├── development/                     # Development environment
+│   ├── .env                        # Development configuration
+│   ├── src/oci_delivery_agent/     # Source code for development
+│   ├── tests/                      # Test files
+│   └── assets/                     # Test assets
+├── delivery-function/               # Production deployment
+│   ├── func.yaml                   # Function configuration
+│   ├── func.py                     # Function entry point
+│   └── src/oci_delivery_agent/     # Deployable source code
+└── venv/                           # Shared virtual environment
+```
+
+## Development Workflow
+
+### 1. Local Development
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Navigate to development directory
+cd development
+
+# Edit source code in src/oci_delivery_agent/
+# Test with sample assets in assets/
+# Run tests: python tests/test_caption_tool.py
+```
+
+### 2. Sync to Production
+```bash
+# Copy development code to production deployment
+cp -r development/src/oci_delivery_agent/* delivery-function/src/oci_delivery_agent/
+```
+
+### 3. Deploy to OCI Functions
+```bash
+# Deploy from production directory
+cd delivery-function
+fn -v deploy --app delivery-agent-app
+```
+
 ## Method 1: Fn Project CLI (Recommended)
 
 Based on the [official Oracle documentation](https://docs.oracle.com/en-us/iaas/Content/Functions/Tasks/functionsuploading.htm), this is the preferred method for deploying functions.

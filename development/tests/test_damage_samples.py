@@ -39,7 +39,8 @@ def test_damage_samples():
         
         config = WorkflowConfig(
             object_storage=object_storage,
-            vision=vision
+            vision=vision,
+            local_asset_root=os.environ.get('LOCAL_ASSET_ROOT')
         )
         
         # Initialize tools
@@ -62,7 +63,7 @@ def test_damage_samples():
             print("-" * 50)
             
             # Load image from local assets
-            local_image_path = f"local_assets/{sample}"
+            local_image_path = f"../assets/{sample}"
             if not os.path.exists(local_image_path):
                 print(f"❌ Image not found: {local_image_path}")
                 continue

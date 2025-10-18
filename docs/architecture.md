@@ -1,6 +1,39 @@
-# OCI Delivery Agent Workflow
+# OCI Delivery Agent Architecture
 
 This document outlines the LangChain-driven workflow that orchestrates proof-of-delivery intelligence across Oracle Cloud Infrastructure (OCI) services.
+
+## Project Structure
+
+The project is organized into development and production environments for optimal workflow management:
+
+```
+├── development/                     # Development Environment
+│   ├── .env                        # Development configuration
+│   ├── src/oci_delivery_agent/     # Source code for development
+│   │   ├── handlers.py              # OCI Function entry point
+│   │   ├── tools.py                 # LangChain tools (Object Storage, EXIF, Vision)
+│   │   ├── chains.py                # LangChain orchestration
+│   │   └── config.py                # Configuration management
+│   ├── tests/                       # Test files
+│   │   ├── test_caption_tool.py     # Vision tool testing
+│   │   └── test_damage_samples.py   # Damage detection testing
+│   ├── assets/                      # Test assets and sample data
+│   │   └── deliveries/              # Sample delivery images
+│   └── README.md                    # Development documentation
+├── delivery-function/               # Production Deployment
+│   ├── func.yaml                    # Function configuration
+│   ├── func.py                      # Function entry point
+│   ├── requirements.txt             # Python dependencies
+│   └── src/oci_delivery_agent/     # Deployable source code
+└── venv/                           # Shared virtual environment
+```
+
+## Development Workflow
+
+1. **Local Development**: Edit code in `development/src/oci_delivery_agent/`
+2. **Testing**: Run tests with sample assets in `development/tests/`
+3. **Sync to Production**: Copy changes to `delivery-function/src/oci_delivery_agent/`
+4. **Deploy**: Use Fn Project CLI from `delivery-function/` directory
 
 ## 1. Event Trigger & Ingestion
 1. **OCI Events** listens to `com.oraclecloud.objectstorage.createobject` events filtered to the delivery bucket prefix.

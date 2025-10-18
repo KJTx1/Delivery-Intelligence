@@ -42,7 +42,8 @@ def test_caption_tool():
         
         config = WorkflowConfig(
             object_storage=object_storage,
-            vision=vision
+            vision=vision,
+            local_asset_root=os.environ.get('LOCAL_ASSET_ROOT')
         )
         
         # Test Object Storage retrieval
@@ -50,7 +51,7 @@ def test_caption_tool():
         retrieval_tool = ObjectRetrievalTool(config)
         
         # Use a test object path (you'll need to upload an image to your bucket first)
-        test_object_path = "sample.jpg"  # Object in root of bucket
+        test_object_path = "deliveries/sample.jpg"  # Object in deliveries folder
         
         try:
             # This should retrieve from Object Storage
@@ -63,7 +64,7 @@ def test_caption_tool():
             print("📝 Falling back to local file for testing...")
             
             # Fallback to local file for testing
-            local_image_path = "/Users/zhizhyan/Desktop/Codex/local_assets/deliveries/sample.jpg"
+            local_image_path = "/Users/zhizhyan/Desktop/Codex/development/assets/deliveries/sample.jpg"
             if not os.path.exists(local_image_path):
                 print(f"❌ Local image not found: {local_image_path}")
                 return False

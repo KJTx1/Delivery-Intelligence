@@ -60,18 +60,23 @@ Upload delivery images to your Object Storage bucket to trigger automatic qualit
 ## Project Structure
 
 ```
-├── src/oci_delivery_agent/          # Core application code
-│   ├── handlers.py                  # OCI Function entry point
-│   ├── tools.py                     # LangChain tools (Object Storage, EXIF, Vision)
-│   ├── chains.py                    # LangChain orchestration
-│   └── config.py                    # Configuration management
-├── delivery-function/               # Fn Project function structure
+├── development/                     # Development environment
+│   ├── src/oci_delivery_agent/     # Source code for local development
+│   │   ├── handlers.py              # OCI Function entry point
+│   │   ├── tools.py                 # LangChain tools (Object Storage, EXIF, Vision)
+│   │   ├── chains.py                # LangChain orchestration
+│   │   └── config.py                # Configuration management
+│   ├── tests/                       # Test files
+│   │   ├── test_caption_tool.py     # Vision tool testing
+│   │   └── test_damage_samples.py   # Damage detection testing
+│   ├── assets/                      # Test assets and sample data
+│   │   └── deliveries/              # Sample delivery images
+│   └── README.md                    # Development documentation
+├── delivery-function/               # Production deployment
 │   ├── func.yaml                    # Function configuration
 │   ├── func.py                      # Function entry point
 │   ├── requirements.txt             # Python dependencies
-│   └── src/                         # Source code (copied from src/)
-├── tests/                           # Test files
-│   └── test_caption_tool.py         # Vision tool testing
+│   └── src/oci_delivery_agent/     # Deployable source code
 ├── docs/                            # Documentation
 │   ├── architecture.md              # System architecture
 │   ├── genai-implementation.md      # GenAI implementation details
@@ -81,10 +86,68 @@ Upload delivery images to your Object Storage bucket to trigger automatic qualit
 
 ## Testing
 
+### Local Development Testing
 ```bash
-# Test image captioning and damage detection with Object Storage
+# Activate virtual environment
+source venv/bin/activate
+
+# Navigate to development directory
+cd development
+
+# Test image captioning and damage detection
+python tests/test_caption_tool.py
+
+# Test damage detection on all samples
+python tests/test_damage_samples.py
+```
+
+### Production Deployment
+```bash
+# Deploy to OCI Functions (no venv needed)
+cd delivery-function
+fn -v deploy --app delivery-agent-app
+
+# Set environment variables in OCI Console
+# OCI Console → Functions → Your Function → Configuration
+```
+
+### Environment Differences
+
+| Aspect | Development (Local) | Production (OCI Functions) |
+|--------|-------------------|---------------------------|
+| **Python Environment** | `venv/` virtual environment | Docker container |
+| **Configuration** | `.env` file | OCI Console environment variables |
+| **Data Source** | Local assets (`development/assets/`) | OCI Object Storage |
+| **Authentication** | Local OCI config file | Instance Principal |
+| **Execution** | Interactive testing | Serverless, event-driven |
+| **Dependencies** | Installed in `venv/` | Built into Docker image |
+
+### Virtual Environment Usage
+
+#### **Development (Uses `venv/`)**
+```bash
+# Activate virtual environment for local development
+source venv/bin/activate
+cd development
 python tests/test_caption_tool.py
 ```
+
+#### **Production (No `venv/` needed)**
+```bash
+# Deploy to OCI Functions (uses Docker container)
+cd delivery-function
+fn -v deploy --app delivery-agent-app
+```
+
+**Why this difference?**
+- **Development**: Uses local Python with `venv/` for isolated package management
+- **Production**: Uses Docker container with built-in dependencies, no local Python needed
+
+### Test Results
+- ✅ **Object Storage**: Automatic fallback to local assets
+- ✅ **GenAI Vision**: Full image captioning and damage detection
+- ✅ **Environment**: Proper `.env` file loading
+- ✅ **Assets**: Sample images for comprehensive testing
 
 ## AI Vision Capabilities
 
