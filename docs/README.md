@@ -5,30 +5,33 @@ This directory contains all documentation for the OCI Delivery Agent project.
 ## 📚 Documentation Index
 
 ### 🏗️ Setup & Configuration
-- **[Step 1: IAM Setup](step1-iam-setup.md)** - Configure IAM policies and dynamic groups
-- **[Step 2: Environment Setup](step2-env-setup.md)** - Set up environment variables and configuration
-- **[IAM Policies Reference](iam-policies.md)** - Detailed IAM policy requirements
+- **[01: IAM Setup](01-iam-setup.md)** - Configure IAM policies and dynamic groups
+- **[02: Environment Setup](02-environment-setup.md)** - Set up environment variables and configuration
+- **[03: Function Deployment](03-function-deployment.md)** - Deploy OCI Function to cloud
 
-### 🚀 Deployment
-- **[Step 4: Function Deployment](step4-function-deployment.md)** - Deploy OCI Function to cloud
-- **[Local Testing Setup](local-testing-setup.md)** - Set up local development environment
+### 🚀 Deployment & Operations
+- **[Deployment Guide](deployment-guide.md)** - Complete deployment workflow
+- **[Project Roadmap](project-roadmap.md)** - Current status and next steps
 
-### 📊 Analysis & Validation
-- **[Function Validation Report](function-validation-report.md)** - Comprehensive validation of all functions
-- **[Folder Structure Analysis](folder-structure-analysis.md)** - Project structure explanation
-- **[Architecture Overview](architecture.md)** - System architecture and design
+### 📊 Architecture & Design
+- **[System Architecture](system-architecture.md)** - System architecture and design
+- **[Dashboard Specification](dashboard-specification.md)** - Frontend dashboard requirements
+
+### 🔧 Implementation Guides
+- **[GenAI Vision Implementation](genai-vision-implementation.md)** - Vision model integration details
+- **[OCI GenAI API Integration](oci-genai-api-integration.md)** - API integration guide
 
 ## 🎯 Quick Start Guide
 
 ### For Local Development:
-1. Read [Local Testing Setup](local-testing-setup.md)
-2. Follow [Step 2: Environment Setup](step2-env-setup.md)
-3. Run `python3 improved_pipeline_test.py`
+1. Follow [02: Environment Setup](02-environment-setup.md)
+2. Read [System Architecture](system-architecture.md)
+3. Run tests: `cd development && python tests/test_caption_tool.py`
 
 ### For Production Deployment:
-1. Follow [Step 1: IAM Setup](step1-iam-setup.md)
-2. Complete [Step 2: Environment Setup](step2-env-setup.md)
-3. Deploy using [Step 4: Function Deployment](step4-function-deployment.md)
+1. Follow [01: IAM Setup](01-iam-setup.md)
+2. Complete [02: Environment Setup](02-environment-setup.md)
+3. Deploy using [03: Function Deployment](03-function-deployment.md)
 
 ## 📋 Project Status
 
@@ -40,17 +43,17 @@ This directory contains all documentation for the OCI Delivery Agent project.
 
 ## 🔧 Key Files
 
-- **Source Code**: `/src/oci_delivery_agent/`
-- **Configuration**: `local.env`, `env.example`
-- **Testing**: `improved_pipeline_test.py`
-- **Deployment**: `deploy_function.py`
+- **Source Code**: `development/src/oci_delivery_agent/`
+- **Configuration**: `development/.env`, `env.example`
+- **Testing**: `development/tests/`
+- **Deployment**: `delivery-function/`
 
 ## 📞 Support
 
 For questions or issues:
 1. Check the relevant documentation above
-2. Review the [Function Validation Report](function-validation-report.md) for implementation status
-3. Consult the [Architecture Overview](architecture.md) for system design
+2. Review the [Project Roadmap](project-roadmap.md) for current status
+3. Consult the [System Architecture](system-architecture.md) for system design
 
 ---
 
