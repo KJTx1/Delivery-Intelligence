@@ -172,14 +172,22 @@ class VisionClient:
 
     def _parse_damage_json(self, raw_text: str) -> Optional[Dict[str, Any]]:
         """Parse a JSON report from model text; try substring recovery if needed."""
+        clean = raw_text.strip()
+        if clean.startswith("```"):
+            lines = [
+                line for line in clean.splitlines()
+                if not line.strip().startswith("```")
+            ]
+            clean = "\n".join(lines).strip()
         try:
-            return json.loads(raw_text)
+            return json.loads(clean)
         except Exception:
-            start = raw_text.find("{")
-            end = raw_text.rfind("}")
+            start = clean.find("{")
+            end = clean.rfind("}")
             if start != -1 and end != -1 and end > start:
+                snippet = clean[start : end + 1]
                 try:
-                    return json.loads(raw_text[start : end + 1])
+                    return json.loads(snippet)
                 except Exception:
                     return None
             return None
