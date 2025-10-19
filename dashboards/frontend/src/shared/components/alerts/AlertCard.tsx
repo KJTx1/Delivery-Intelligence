@@ -1,5 +1,5 @@
 import { AlertCircle, Clock } from 'lucide-react';
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 
 interface AlertCardProps {
   severity: 'critical' | 'warning' | 'info';

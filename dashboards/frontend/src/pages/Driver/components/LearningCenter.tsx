@@ -1,4 +1,4 @@
-import { Play, Clock, BookOpen, GraduationCap } from 'lucide-react';
+import { Play, Clock, BookOpen } from 'lucide-react';
 import { mockDriverPerformance } from '@/data/mockData';
 
 export function LearningCenter() {

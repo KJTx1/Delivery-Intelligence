@@ -1,4 +1,4 @@
-import { Target, TrendingUp } from 'lucide-react';
+import { Target } from 'lucide-react';
 import { mockImpactMetrics } from '@/data/mockData';
 
 export function ImpactMetrics() {

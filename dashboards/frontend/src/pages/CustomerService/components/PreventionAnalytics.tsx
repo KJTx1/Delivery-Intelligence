@@ -1,4 +1,4 @@
-import { TrendChart } from '@/components/charts/TrendChart';
+import { TrendChart } from '@/shared/components/charts/TrendChart';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { mockPreventionTrend } from '@/data/mockData';
 

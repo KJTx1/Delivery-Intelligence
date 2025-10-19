@@ -1,5 +1,5 @@
-import { TrendChart } from '@/components/charts/TrendChart';
-import { TrendingDown, Shield } from 'lucide-react';
+import { TrendChart } from '@/shared/components/charts/TrendChart';
+import { Shield } from 'lucide-react';
 import { mockDamagePrevention } from '@/data/mockData';
 
 export function DamagePrevention() {

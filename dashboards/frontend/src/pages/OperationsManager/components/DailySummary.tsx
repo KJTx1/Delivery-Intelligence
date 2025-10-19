@@ -1,4 +1,4 @@
-import { MetricCard } from '@/components/metrics/MetricCard';
+import { MetricCard } from '@/shared/components/metrics/MetricCard';
 import { Truck, CheckCircle, DollarSign, AlertTriangle, BarChart3 } from 'lucide-react';
 import { mockFleetSummary } from '@/data/mockData';
 

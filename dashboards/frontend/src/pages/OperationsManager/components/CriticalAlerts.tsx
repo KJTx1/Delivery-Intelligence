@@ -1,4 +1,4 @@
-import { AlertCard } from '@/components/alerts/AlertCard';
+import { AlertCard } from '@/shared/components/alerts/AlertCard';
 import { Bell, Wifi, WifiOff, CheckCircle } from 'lucide-react';
 import { mockCriticalAlerts } from '@/data/mockData';
 

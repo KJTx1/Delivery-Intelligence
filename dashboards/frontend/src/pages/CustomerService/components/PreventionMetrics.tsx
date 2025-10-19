@@ -1,4 +1,4 @@
-import { MetricCard } from '@/components/metrics/MetricCard';
+import { MetricCard } from '@/shared/components/metrics/MetricCard';
 import { Shield, Phone, Clock, AlertTriangle, Calendar } from 'lucide-react';
 import { mockPreventionMetrics } from '@/data/mockData';
 
@@ -55,7 +55,6 @@ export function PreventionMetrics() {
             value: Math.abs(data.weekOverWeek.avgResponseTime),
             direction: data.weekOverWeek.avgResponseTime >= 0 ? 'up' : 'down',
             isPositive: false,
-            suffix: 'h',
           }}
         />
       </div>
