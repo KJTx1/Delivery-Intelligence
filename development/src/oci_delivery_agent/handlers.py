@@ -15,6 +15,7 @@ from .config import (
     GeolocationConfig,
     ObjectStorageConfig,
     QualityIndexWeights,
+    SeverityScores,
     VisionConfig,
     WorkflowConfig,
 )
@@ -54,6 +55,12 @@ def load_config() -> WorkflowConfig:
                 box_deformation=float(os.environ.get("DAMAGE_WEIGHT_BOX_DEFORMATION", "0.3")),
                 packaging_integrity=float(os.environ.get("DAMAGE_WEIGHT_PACKAGING_INTEGRITY", "0.2")),
                 corner_damage=float(os.environ.get("DAMAGE_WEIGHT_CORNER_DAMAGE", "0.1")),
+            ),
+            severity_scores=SeverityScores(
+                none=float(os.environ.get("SEVERITY_SCORE_NONE", "0.05")),
+                minor=float(os.environ.get("SEVERITY_SCORE_MINOR", "0.35")),
+                moderate=float(os.environ.get("SEVERITY_SCORE_MODERATE", "0.65")),
+                severe=float(os.environ.get("SEVERITY_SCORE_SEVERE", "0.9")),
             ),
         ),
         notification_topic_id=os.environ.get("NOTIFICATION_TOPIC_ID"),

@@ -66,7 +66,7 @@ def compute_timeliness_score(context: DeliveryContext) -> float:
     if context.delivered_time_utc <= context.promised_time_utc:
         return 1.0
     delay = (context.delivered_time_utc - context.promised_time_utc).total_seconds() / 3600
-    return max(0.0, 1 - min(delay, 4) / 4)
+    return round(max(0.0, 1 - min(delay, 4) / 4), 3)
 
 
 def compute_damage_score(damage_report: Mapping[str, Any], config: Optional[WorkflowConfig] = None) -> float:
@@ -77,19 +77,19 @@ def compute_damage_score(damage_report: Mapping[str, Any], config: Optional[Work
         config.damage_scoring.use_weighted_scoring and 
         damage_report.get("indicators")):
         
-        return _compute_weighted_damage_score(damage_report, config.damage_scoring.type_weights)
+        return _compute_weighted_damage_score(damage_report, config.damage_scoring.type_weights, config.damage_scoring.severity_scores)
     
     # Fallback to original logic
     if isinstance(damage_report.get("overall"), dict):
         score = damage_report["overall"].get("score", 0.0)
         # Score is damage probability, so quality = 1 - damage
-        return max(0.0, 1 - float(score))
+        return round(max(0.0, 1 - float(score)), 3)
     # Fallback: old format with "damage" key
     damage_prob = damage_report.get("damage", 0.0)
-    return max(0.0, 1 - damage_prob)
+    return round(max(0.0, 1 - damage_prob), 3)
 
 
-def _compute_weighted_damage_score(damage_report: Mapping[str, Any], type_weights: DamageTypeWeights) -> float:
+def _compute_weighted_damage_score(damage_report: Mapping[str, Any], type_weights: DamageTypeWeights, severity_scores: SeverityScores) -> float:
     """MVP: Compute weighted damage score from individual indicators."""
     
     indicators = damage_report.get("indicators", {})
@@ -99,13 +99,13 @@ def _compute_weighted_damage_score(damage_report: Mapping[str, Any], type_weight
     # Get normalized weights
     weights = type_weights.normalized()
     
-    # Convert severity to numeric score
+    # Convert severity to numeric score using configurable values
     def severity_to_score(severity: str) -> float:
         severity_map = {
-            "none": 0.05,
-            "minor": 0.35,
-            "moderate": 0.65,
-            "severe": 0.9
+            "none": severity_scores.none,
+            "minor": severity_scores.minor,
+            "moderate": severity_scores.moderate,
+            "severe": severity_scores.severe
         }
         return severity_map.get(severity, 0.0)
     
@@ -128,32 +128,32 @@ def _compute_weighted_damage_score(damage_report: Mapping[str, Any], type_weight
     # Calculate weighted average damage score
     weighted_damage_score = total_weighted_score / total_weight
     
-    # Convert to quality score (1 - damage)
-    return max(0.0, 1.0 - weighted_damage_score)
+    # Convert to quality score (1 - damage) and round to avoid precision errors
+    return round(max(0.0, 1.0 - weighted_damage_score), 3)
 
 
 def compute_quality_index(
     *,
     context: DeliveryContext,
     exif: Mapping[str, Any],
-    damage_predictions: Mapping[str, float],
+    damage_report: Mapping[str, Any],
     weights: Mapping[str, float],
     max_distance_meters: float,
     config: Optional[WorkflowConfig] = None,
 ) -> Dict[str, float]:
     location_accuracy = compute_location_accuracy(exif, context, max_distance_meters=max_distance_meters)
     timeliness = compute_timeliness_score(context)
-    damage = compute_damage_score(damage_predictions, config)
+    damage = compute_damage_score(damage_report, config)
 
-    quality_index = (
+    quality_index = round(
         weights["location_accuracy"] * location_accuracy
         + weights["timeliness"] * timeliness
-        + weights["damage_score"] * damage
+        + weights["damage_score"] * damage, 3
     )
     return {
-        "location_accuracy": location_accuracy,
+        "location_accuracy": round(location_accuracy, 3),
         "timeliness": timeliness,
-        "damage": damage,
+        "package_quality": damage,  # Clear: this is quality score (0-1, higher is better)
         "quality_index": quality_index,
     }
 
@@ -209,7 +209,7 @@ def run_quality_pipeline(
     quality_metrics = compute_quality_index(
         context=context,
         exif=exif_raw,
-        damage_predictions=damage_report,
+        damage_report=damage_report,
         weights=weights,
         max_distance_meters=config.geolocation.max_distance_meters,
         config=config,

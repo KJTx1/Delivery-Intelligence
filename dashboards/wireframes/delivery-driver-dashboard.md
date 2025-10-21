@@ -676,7 +676,7 @@
 ### Phase 3 Features
 - Voice-based coaching assistant
 - AR overlay for ideal package placement
-- Real-time delivery quality prediction
+- Real-time delivery quality assessment
 - Integration with route navigation
 - Social sharing of achievements
 

@@ -4,6 +4,11 @@
 
 The MVP adds **weighted damage scoring** that treats different damage types based on their business impact, rather than treating all damage equally.
 
+### **📊 Clear Quality Metrics**
+- **`package_quality`**: Quality score (0.0-1.0, higher is better)
+- **`damage_severity`**: AI-detected severity level ("none", "minor", "moderate", "severe")
+- **`quality_index`**: Overall delivery quality score
+
 ### **Before (Current System)**
 - All damage types treated equally
 - Uses "worst indicator" approach
@@ -48,8 +53,8 @@ python test_mvp_damage_scoring.py
 - Minor box deformation (0.35)  
 - Minor corner damage (0.35)
 
-| System | Score | Quality | Impact |
-|--------|-------|---------|---------|
+| System | Score | Package Quality | Impact |
+|--------|-------|----------------|---------|
 | **Current** | 0.35 | 65% | Takes worst only |
 | **MVP** | 0.35 | 65% | Weighted average |
 | **Result** | Same | Same | ✅ Backward compatible |
@@ -58,10 +63,10 @@ python test_mvp_damage_scoring.py
 - Package A: Severe leakage only
 - Package B: Severe corner damage only
 
-| Package | Current Score | MVP Score | Business Impact |
-|---------|---------------|-----------|-----------------|
-| **A (Leakage)** | 0.9 → 10% | 0.36 → 64% | ✅ Properly weighted |
-| **B (Corner)** | 0.9 → 10% | 0.09 → 91% | ✅ Cosmetic tolerance |
+| Package | Current Score | MVP Score | Package Quality | Business Impact |
+|---------|---------------|-----------|----------------|-----------------|
+| **A (Leakage)** | 0.9 → 10% | 0.36 → 64% | 64% | ✅ Properly weighted |
+| **B (Corner)** | 0.9 → 10% | 0.09 → 91% | 91% | ✅ Cosmetic tolerance |
 
 **Result**: Leakage is now **7x more impactful** than corner damage! 🎯
 
@@ -203,6 +208,41 @@ DAMAGE_WEIGHT_LEAKAGE=0.5
 # Furniture should have high deformation weight  
 DAMAGE_WEIGHT_BOX_DEFORMATION=0.4
 ```
+
+---
+
+## 📊 **API Response Format**
+
+### **Quality Metrics Structure**
+```json
+{
+  "quality_metrics": {
+    "location_accuracy": 0.0,
+    "timeliness": 0.875,
+    "package_quality": 0.9,        // ← Clear: 90% quality (higher is better)
+    "quality_index": 0.662
+  },
+  "damage_report": {
+    "overall": {
+      "severity": "minor",          // ← AI-detected severity level
+      "score": 0.1,               // ← AI damage probability (0-1)
+      "rationale": "Minor corner damage detected"
+    },
+    "indicators": {
+      "leakage": {"present": false, "severity": "none"},
+      "boxDeformation": {"present": false, "severity": "none"},
+      "cornerDamage": {"present": true, "severity": "minor"},
+      "packagingIntegrity": {"present": false, "severity": "none"}
+    }
+  }
+}
+```
+
+### **Key Metrics Explained**
+- **`package_quality`**: Overall package condition (0.0-1.0, higher = better)
+- **`damage_report.overall.severity`**: AI-detected severity ("none", "minor", "moderate", "severe")
+- **`damage_report.overall.score`**: AI damage probability (0.0-1.0, higher = more damage)
+- **`quality_index`**: Composite quality score including location, timing, and package quality
 
 ---
 

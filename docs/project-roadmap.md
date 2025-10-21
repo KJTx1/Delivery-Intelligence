@@ -93,7 +93,7 @@ The deployed function is hanging when testing Instance Principal authentication,
 - [ ] Add notification preferences
 
 ### **3. Advanced Analytics**
-- [ ] Implement machine learning for quality prediction
+- [ ] Implement machine learning for quality assessment
 - [ ] Add trend analysis and reporting
 - [ ] Implement anomaly detection
 - [ ] Add predictive quality scoring

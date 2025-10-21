@@ -245,6 +245,58 @@ class VisionClient:
                     return None
             return None
 
+    def _parse_caption_json(self, raw_text: str) -> Optional[Dict[str, Any]]:
+        """Parse caption JSON from model text; try substring recovery if needed."""
+        clean = raw_text.strip()
+        
+        # Remove markdown code blocks
+        if clean.startswith("```"):
+            lines = [
+                line for line in clean.splitlines()
+                if not line.strip().startswith("```")
+            ]
+            clean = "\n".join(lines).strip()
+        
+        # Try direct JSON parsing first
+        try:
+            return json.loads(clean)
+        except Exception:
+            pass
+        
+        # Try to find JSON object boundaries
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            snippet = clean[start : end + 1]
+            try:
+                return json.loads(snippet)
+            except Exception:
+                pass
+        
+        # Try to find JSON array boundaries (in case it's wrapped in array)
+        start = clean.find("[")
+        end = clean.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            snippet = clean[start : end + 1]
+            try:
+                parsed = json.loads(snippet)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    return parsed[0]  # Return first object if it's an array
+            except Exception:
+                pass
+        
+        # Try to extract JSON from common patterns
+        import re
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, clean, re.DOTALL)
+        for match in matches:
+            try:
+                return json.loads(match)
+            except Exception:
+                continue
+        
+        return None
+
     def _caption_json_prompt(self) -> str:
         """Return structured JSON prompt for delivery scene caption."""
         return (
@@ -378,7 +430,7 @@ class VisionClient:
                 caption_text = response.data.chat_response.choices[0].message.content[0].text
                 
                 # Try to parse as JSON
-                caption_json = self._parse_damage_json(caption_text)
+                caption_json = self._parse_caption_json(caption_text)
                 if caption_json is not None:
                     return json.dumps(caption_json)
                 else:

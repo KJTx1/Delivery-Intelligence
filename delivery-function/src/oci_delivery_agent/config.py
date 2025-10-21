@@ -55,6 +55,16 @@ class DamageTypeWeights:
 
 
 @dataclass
+class SeverityScores:
+    """Configurable severity score mapping."""
+    
+    none: float = 0.05
+    minor: float = 0.35
+    moderate: float = 0.65
+    severe: float = 0.9
+
+
+@dataclass
 class DamageScoringConfig:
     """Configuration for damage severity scoring thresholds."""
 
@@ -68,6 +78,7 @@ class DamageScoringConfig:
     # MVP: Add damage type weights
     use_weighted_scoring: bool = True
     type_weights: DamageTypeWeights = field(default_factory=DamageTypeWeights)
+    severity_scores: SeverityScores = field(default_factory=SeverityScores)
 
     def __post_init__(self):
         """Validate score thresholds."""
