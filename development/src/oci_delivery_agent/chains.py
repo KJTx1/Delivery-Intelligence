@@ -69,9 +69,17 @@ def compute_timeliness_score(context: DeliveryContext) -> float:
     return max(0.0, 1 - min(delay, 4) / 4)
 
 
-def compute_damage_score(damage_report: Mapping[str, Any]) -> float:
+def compute_damage_score(damage_report: Mapping[str, Any], config: Optional[WorkflowConfig] = None) -> float:
     """Compute damage score from structured damage report JSON."""
-    # Try to extract score from overall field
+    
+    # MVP: If weighted scoring is enabled and we have indicators, use weighted calculation
+    if (config and 
+        config.damage_scoring.use_weighted_scoring and 
+        damage_report.get("indicators")):
+        
+        return _compute_weighted_damage_score(damage_report, config.damage_scoring.type_weights)
+    
+    # Fallback to original logic
     if isinstance(damage_report.get("overall"), dict):
         score = damage_report["overall"].get("score", 0.0)
         # Score is damage probability, so quality = 1 - damage
@@ -81,6 +89,49 @@ def compute_damage_score(damage_report: Mapping[str, Any]) -> float:
     return max(0.0, 1 - damage_prob)
 
 
+def _compute_weighted_damage_score(damage_report: Mapping[str, Any], type_weights: DamageTypeWeights) -> float:
+    """MVP: Compute weighted damage score from individual indicators."""
+    
+    indicators = damage_report.get("indicators", {})
+    if not indicators:
+        return 1.0  # No damage indicators = perfect quality
+    
+    # Get normalized weights
+    weights = type_weights.normalized()
+    
+    # Convert severity to numeric score
+    def severity_to_score(severity: str) -> float:
+        severity_map = {
+            "none": 0.05,
+            "minor": 0.35,
+            "moderate": 0.65,
+            "severe": 0.9
+        }
+        return severity_map.get(severity, 0.0)
+    
+    # Calculate weighted average of present damage indicators
+    total_weighted_score = 0.0
+    total_weight = 0.0
+    
+    for indicator_name, indicator_data in indicators.items():
+        if indicator_data.get("present", False):
+            severity = indicator_data.get("severity", "none")
+            score = severity_to_score(severity)
+            weight = weights.get(indicator_name, 0.0)
+            
+            total_weighted_score += score * weight
+            total_weight += weight
+    
+    if total_weight == 0:
+        return 1.0  # No active damage indicators
+    
+    # Calculate weighted average damage score
+    weighted_damage_score = total_weighted_score / total_weight
+    
+    # Convert to quality score (1 - damage)
+    return max(0.0, 1.0 - weighted_damage_score)
+
+
 def compute_quality_index(
     *,
     context: DeliveryContext,
@@ -88,10 +139,11 @@ def compute_quality_index(
     damage_predictions: Mapping[str, float],
     weights: Mapping[str, float],
     max_distance_meters: float,
+    config: Optional[WorkflowConfig] = None,
 ) -> Dict[str, float]:
     location_accuracy = compute_location_accuracy(exif, context, max_distance_meters=max_distance_meters)
     timeliness = compute_timeliness_score(context)
-    damage = compute_damage_score(damage_predictions)
+    damage = compute_damage_score(damage_predictions, config)
 
     quality_index = (
         weights["location_accuracy"] * location_accuracy
@@ -160,6 +212,7 @@ def run_quality_pipeline(
         damage_predictions=damage_report,
         weights=weights,
         max_distance_meters=config.geolocation.max_distance_meters,
+        config=config,
     )
 
     workflow_chain = build_workflow_chain(config, llm)

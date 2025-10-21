@@ -28,24 +28,24 @@ def handler(ctx, data=None):
         
         # Handle empty data
         if len(data_bytes) == 0:
-            return {"error": "Empty data received", "status": "error"}
+            return json.dumps({"error": "Empty data received", "status": "error"})
         
         try:
             request = json.loads(data_bytes.decode("utf-8"))
         except json.JSONDecodeError as e:
-            return {"error": f"JSON decode error: {e}", "status": "error", "data_preview": data_bytes[:100]}
+            return json.dumps({"error": f"JSON decode error: {e}", "status": "error", "data_preview": data_bytes[:100].decode('utf-8', errors='ignore')})
         
         test_type = request.get("test_type", "basic")
         
         if test_type == "basic":
             # Basic connectivity test
-            return {
+            return json.dumps({
                 "message": "Function is working!",
                 "status": "success",
                 "version": "0.0.20",
                 "test_type": "basic",
                 "langchain_available": True
-            }
+            })
         
         elif test_type == "imports":
             # Test individual imports
@@ -56,7 +56,7 @@ def handler(ctx, data=None):
                 from langchain.chains import LLMChain
                 from langchain_core.language_models import BaseLLM
                 
-                return {
+                return json.dumps({
                     "message": "All imports successful!",
                     "status": "success",
                     "test_type": "imports",
@@ -67,13 +67,13 @@ def handler(ctx, data=None):
                         "langchain": "✅",
                         "langchain_core": "✅"
                     }
-                }
+                })
             except Exception as e:
-                return {
+                return json.dumps({
                     "error": str(e),
                     "status": "error",
                     "test_type": "imports"
-                }
+                })
         
         elif test_type == "auth":
             # Test Resource Principal authentication with timeout
@@ -96,26 +96,26 @@ def handler(ctx, data=None):
                 # Cancel the alarm
                 signal.alarm(0)
                 
-                return {
+                return json.dumps({
                     "message": "Resource Principal authentication successful!",
                     "status": "success", 
                     "test_type": "auth",
                     "auth_method": "resource_principal"
-                }
+                })
             except TimeoutError:
                 print("❌ Resource Principal authentication timed out")
-                return {
+                return json.dumps({
                     "error": "Resource Principal authentication timed out after 10 seconds",
                     "status": "error",
                     "test_type": "auth"
-                }
+                })
             except Exception as e:
                 print(f"❌ Resource Principal failed: {e}")
-                return {
+                return json.dumps({
                     "error": f"Resource Principal authentication failed: {e}",
                     "status": "error",
                     "test_type": "auth"
-                }
+                })
         
         elif test_type == "extract":
             from oci_delivery_agent.handlers import load_config
@@ -126,11 +126,11 @@ def handler(ctx, data=None):
                 or request.get("data", {}).get("resourceName")
             )
             if not object_name:
-                return {
+                return json.dumps({
                     "error": "object_name missing from request",
                     "status": "error",
                     "test_type": "extract",
-                }
+                })
 
             config = load_config()
             retrieval_tool = ObjectRetrievalTool(config)
@@ -141,14 +141,14 @@ def handler(ctx, data=None):
 
             gps_info = exif_data.get("GPSInfo", {})
 
-            return {
+            return json.dumps({
                 "status": "success",
                 "test_type": "extract",
                 "object_name": object_name,
                 "metadata": retrieval_result["metadata"],
                 "gps": gps_info,
                 "exif": exif_data,
-            }
+            })
 
         else:
             # Full delivery agent test
@@ -171,17 +171,20 @@ def handler(ctx, data=None):
             event_bytes = json.dumps(test_event).encode('utf-8')
             
             result = delivery_handler(ctx, event_bytes)
+            # Ensure the result is JSON formatted
+            if isinstance(result, dict):
+                return json.dumps(result)
             return result
         
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        return {
+        return json.dumps({
             "error": str(e),
             "status": "error",
             "message": "Function processing failed",
             "traceback": error_details
-        }
+        })
 
 if __name__ == "__main__":
     fdk.handle(handler)

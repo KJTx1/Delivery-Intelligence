@@ -192,6 +192,9 @@ class VisionClient:
 
     def _damage_json_prompt(self) -> str:
         """Return strict JSON-only prompt for damage assessment."""
+        # Get scoring thresholds from config
+        scoring = self._config.damage_scoring
+        
         return (
             "You are a delivery damage inspector. Analyze the provided image and produce ONLY a single JSON object (no markdown, no preface, no trailing text) with this exact structure:\n\n"
             "{\n"
@@ -212,10 +215,10 @@ class VisionClient:
             "- packagingIntegrity: tears, holes, dents, scratches, tape failure.\n\n"
             "Rules:\n"
             "- If the package is not visible, set \"packageVisible\": false and \"overall.severity\": \"none\", \"overall.score\": 0.0 with rationale.\n"
-            "- If no damage is visible, set all indicators.present=false, severity=\"none\", evidence=\"none\", overall.severity=\"none\", overall.score<=0.1.\n"
-            "- Calibrate score by worst indicator: severe ≈ 0.9, moderate ≈ 0.6–0.7, minor ≈ 0.3–0.4, none ≤ 0.1.\n"
+            f"- If no damage is visible, set all indicators.present=false, severity=\"none\", evidence=\"none\", overall.severity=\"none\", overall.score<={scoring.none_max}.\n"
+            f"- Calibrate score by worst indicator: severe ≈ {scoring.severe_min}, moderate ≈ {scoring.moderate_min}–{scoring.moderate_max}, minor ≈ {scoring.minor_min}–{scoring.minor_max}, none ≤ {scoring.none_max}.\n"
             "- Keep evidence short and visual (what/where). Be precise, no speculation.\n"
-            "- If any of these keywords are observed: crushed, bent, bulging, tear, hole, dent, leak, wet, stain → minimum severity is 'minor' and score ≥ 0.3.\n"
+            f"- If any of these keywords are observed: crushed, bent, bulging, tear, hole, dent, leak, wet, stain → minimum severity is 'minor' and score ≥ {scoring.minor_min}.\n"
             "- Output MUST be valid JSON, UTF-8, no trailing commas, no extra commentary.\n\n"
             "Now analyze the image and output the JSON only."
         )

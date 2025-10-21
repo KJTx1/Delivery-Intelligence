@@ -10,6 +10,8 @@ from typing import Any, Dict
 
 from .chains import DeliveryContext, run_quality_pipeline
 from .config import (
+    DamageScoringConfig,
+    DamageTypeWeights,
     GeolocationConfig,
     ObjectStorageConfig,
     QualityIndexWeights,
@@ -38,6 +40,21 @@ def load_config() -> WorkflowConfig:
             timeliness=float(os.environ.get("WEIGHT_TIMELINESS", "0.3")),
             location_accuracy=float(os.environ.get("WEIGHT_LOCATION", "0.3")),
             damage_score=float(os.environ.get("WEIGHT_DAMAGE", "0.4")),
+        ),
+        damage_scoring=DamageScoringConfig(
+            none_max=float(os.environ.get("DAMAGE_SCORE_NONE_MAX", "0.1")),
+            minor_min=float(os.environ.get("DAMAGE_SCORE_MINOR_MIN", "0.3")),
+            minor_max=float(os.environ.get("DAMAGE_SCORE_MINOR_MAX", "0.4")),
+            moderate_min=float(os.environ.get("DAMAGE_SCORE_MODERATE_MIN", "0.6")),
+            moderate_max=float(os.environ.get("DAMAGE_SCORE_MODERATE_MAX", "0.7")),
+            severe_min=float(os.environ.get("DAMAGE_SCORE_SEVERE_MIN", "0.9")),
+            use_weighted_scoring=os.environ.get("DAMAGE_USE_WEIGHTED_SCORING", "true").lower() == "true",
+            type_weights=DamageTypeWeights(
+                leakage=float(os.environ.get("DAMAGE_WEIGHT_LEAKAGE", "0.4")),
+                box_deformation=float(os.environ.get("DAMAGE_WEIGHT_BOX_DEFORMATION", "0.3")),
+                packaging_integrity=float(os.environ.get("DAMAGE_WEIGHT_PACKAGING_INTEGRITY", "0.2")),
+                corner_damage=float(os.environ.get("DAMAGE_WEIGHT_CORNER_DAMAGE", "0.1")),
+            ),
         ),
         notification_topic_id=os.environ.get("NOTIFICATION_TOPIC_ID"),
         database_table=os.environ.get("QUALITY_TABLE", "delivery_quality_events"),

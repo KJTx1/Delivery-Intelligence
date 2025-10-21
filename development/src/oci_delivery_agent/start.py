@@ -13,6 +13,7 @@ from langchain.llms.fake import FakeListLLM
 
 from .chains import DeliveryContext, run_quality_pipeline
 from .config import (
+    DamageScoringConfig,
     GeolocationConfig,
     ObjectStorageConfig,
     QualityIndexWeights,
@@ -51,12 +52,21 @@ def _build_config(args: argparse.Namespace) -> WorkflowConfig:
         damage_score=args.weight_damage
         or float(os.environ.get("WEIGHT_DAMAGE", "0.4")),
     )
+    damage_scoring = DamageScoringConfig(
+        none_max=float(os.environ.get("DAMAGE_SCORE_NONE_MAX", "0.1")),
+        minor_min=float(os.environ.get("DAMAGE_SCORE_MINOR_MIN", "0.3")),
+        minor_max=float(os.environ.get("DAMAGE_SCORE_MINOR_MAX", "0.4")),
+        moderate_min=float(os.environ.get("DAMAGE_SCORE_MODERATE_MIN", "0.6")),
+        moderate_max=float(os.environ.get("DAMAGE_SCORE_MODERATE_MAX", "0.7")),
+        severe_min=float(os.environ.get("DAMAGE_SCORE_SEVERE_MIN", "0.9")),
+    )
 
     return WorkflowConfig(
         object_storage=object_storage,
         vision=vision,
         geolocation=geolocation,
         quality_weights=quality_weights,
+        damage_scoring=damage_scoring,
         notification_topic_id=os.environ.get("NOTIFICATION_TOPIC_ID"),
         database_table=os.environ.get("QUALITY_TABLE", "delivery_quality_events"),
         local_asset_root=args.local_asset_root or os.environ.get("LOCAL_ASSET_ROOT"),
