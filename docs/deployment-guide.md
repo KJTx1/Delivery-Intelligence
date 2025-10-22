@@ -16,15 +16,22 @@ This guide explains how to deploy the OCI Delivery Agent to OCI Functions using 
 The project is organized into development and production environments:
 
 ```
+├── dashboards/                      # Frontend dashboard application
+│   ├── frontend/                   # React-based dashboard interface
+│   └── wireframes/                 # Dashboard design specifications
 ├── development/                     # Development environment
 │   ├── .env                        # Development configuration
 │   ├── src/oci_delivery_agent/     # Source code for development
 │   ├── tests/                      # Test files
 │   └── assets/                     # Test assets
-├── delivery-function/               # Production deployment
+├── delivery-function/               # Main production function
 │   ├── func.yaml                   # Function configuration
 │   ├── func.py                     # Function entry point
 │   └── src/oci_delivery_agent/     # Deployable source code
+├── face-blur-function/              # Face blurring service
+│   ├── func.yaml                   # Function configuration
+│   ├── func.py                     # Face blurring function
+│   └── src/oci_delivery_agent/     # Source code
 └── venv/                           # Shared virtual environment
 ```
 
@@ -47,13 +54,23 @@ cd development
 ```bash
 # Copy development code to production deployment
 cp -r development/src/oci_delivery_agent/* delivery-function/src/oci_delivery_agent/
+cp -r development/src/oci_delivery_agent/* face-blur-function/src/oci_delivery_agent/
 ```
 
 ### 3. Deploy to OCI Functions
+
+#### Deploy Main Delivery Function
 ```bash
-# Deploy from production directory
+# Deploy main delivery function
 cd delivery-function
 fn -v deploy --app delivery-agent-app
+```
+
+#### Deploy Face Blur Function
+```bash
+# Deploy face blur function
+cd face-blur-function
+fn -v deploy --app face-blur-app
 ```
 
 ## Method 1: Fn Project CLI (Recommended)

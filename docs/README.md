@@ -39,14 +39,19 @@ This directory contains all documentation for the OCI Delivery Agent project.
 - ✅ **Component Testing**: All tests passing
 - ✅ **Pipeline Integration**: Full workflow tested
 - ✅ **Function Validation**: All functions validated
-- 🚀 **Ready for Deployment**: Ready for OCI Function deployment
+- ✅ **Face Blur Function**: Standalone privacy protection service deployed
+- ✅ **Dashboard Interface**: Complete React-based dashboard for all user roles
+- ✅ **Code Cleanup**: All unnecessary files removed
+- 🚀 **Production Ready**: Both functions deployed and operational
 
 ## 🔧 Key Files
 
 - **Source Code**: `development/src/oci_delivery_agent/`
 - **Configuration**: `development/.env`, `env.example`
 - **Testing**: `development/tests/`
-- **Deployment**: `delivery-function/`
+- **Main Function**: `delivery-function/`
+- **Face Blur Function**: `face-blur-function/`
+- **Dashboard**: `dashboards/frontend/`
 
 ## 📞 Support
 

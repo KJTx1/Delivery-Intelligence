@@ -7,6 +7,14 @@ This document outlines the LangChain-driven workflow that orchestrates proof-of-
 The project is organized into development and production environments for optimal workflow management:
 
 ```
+├── dashboards/                      # Frontend dashboard application
+│   ├── frontend/                   # React-based dashboard interface
+│   │   ├── src/pages/              # Role-specific dashboards
+│   │   │   ├── CustomerService/    # Customer service dashboard
+│   │   │   ├── Driver/             # Driver performance dashboard
+│   │   │   └── OperationsManager/  # Operations management dashboard
+│   │   └── dist/                   # Built dashboard assets
+│   └── wireframes/                 # Dashboard design specifications
 ├── development/                     # Development Environment
 │   ├── .env                        # Development configuration
 │   ├── src/oci_delivery_agent/     # Source code for development
@@ -20,11 +28,16 @@ The project is organized into development and production environments for optima
 │   ├── assets/                      # Test assets and sample data
 │   │   └── deliveries/              # Sample delivery images
 │   └── README.md                    # Development documentation
-├── delivery-function/               # Production Deployment
+├── delivery-function/               # Main Production Function
 │   ├── func.yaml                    # Function configuration
 │   ├── func.py                      # Function entry point
 │   ├── requirements.txt             # Python dependencies
 │   └── src/oci_delivery_agent/     # Deployable source code
+├── face-blur-function/              # Face Blurring Service
+│   ├── func.yaml                    # Function configuration
+│   ├── func.py                      # Face blurring function
+│   ├── requirements.txt           # Python dependencies
+│   └── src/oci_delivery_agent/     # Source code
 └── venv/                           # Shared virtual environment
 ```
 

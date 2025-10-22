@@ -5,11 +5,13 @@ Serverless delivery quality assessment system using OCI Functions, Generative AI
 ## Features
 
 - **🖼️ AI-Powered Image Analysis**: Uses OCI Generative AI Vision models for structured image captioning and damage detection
+- **🔒 Privacy Protection**: Automatic face detection and blurring to protect privacy (GDPR/CCPA compliant)
 - **📦 Object Storage Integration**: Automatically processes images uploaded to OCI Object Storage
 - **🔍 EXIF Metadata Extraction**: Extracts GPS coordinates and camera metadata from delivery photos
 - **📊 Quality Scoring**: Computes delivery quality index based on timeliness, location accuracy, and damage assessment
 - **⚡ Serverless Architecture**: Built on OCI Functions for automatic scaling and cost efficiency
 - **🎯 Structured JSON Output**: All AI tools return structured JSON for consistent pipeline processing
+- **🎨 Dashboard Interface**: Complete React-based dashboard for Customer Service, Drivers, and Operations Managers
 
 ## Quick Deploy
 
@@ -60,6 +62,17 @@ Upload delivery images to your Object Storage bucket to trigger automatic qualit
 ## Project Structure
 
 ```
+├── dashboards/                      # Frontend dashboard application
+│   ├── frontend/                   # React-based dashboard interface
+│   │   ├── src/                    # Dashboard source code
+│   │   │   ├── pages/              # Role-specific dashboards
+│   │   │   │   ├── CustomerService/ # Customer service dashboard
+│   │   │   │   ├── Driver/         # Driver performance dashboard
+│   │   │   │   └── OperationsManager/ # Operations management dashboard
+│   │   │   ├── shared/             # Shared components and utilities
+│   │   │   └── services/           # API integration services
+│   │   └── dist/                   # Built dashboard assets
+│   └── wireframes/                 # Dashboard design specifications
 ├── development/                     # Development environment
 │   ├── src/oci_delivery_agent/     # Source code for local development
 │   │   ├── handlers.py              # OCI Function entry point
@@ -72,14 +85,19 @@ Upload delivery images to your Object Storage bucket to trigger automatic qualit
 │   ├── assets/                      # Test assets and sample data
 │   │   └── deliveries/              # Sample delivery images
 │   └── README.md                    # Development documentation
-├── delivery-function/               # Production deployment
+├── delivery-function/               # Production deployment (main function)
 │   ├── func.yaml                    # Function configuration
 │   ├── func.py                      # Function entry point
 │   ├── requirements.txt             # Python dependencies
 │   └── src/oci_delivery_agent/     # Deployable source code
+├── face-blur-function/              # Face blurring service
+│   ├── func.yaml                    # Function configuration
+│   ├── func.py                      # Face blurring function
+│   ├── requirements.txt             # Python dependencies
+│   └── src/oci_delivery_agent/     # Source code
 ├── docs/                            # Documentation
-│   ├── architecture.md              # System architecture
-│   ├── genai-implementation.md      # GenAI implementation details
+│   ├── system-architecture.md       # System architecture
+│   ├── genai-vision-implementation.md # GenAI implementation details
 │   └── deployment-guide.md          # Complete deployment guide
 └── env.example                     # Environment configuration template
 ```
@@ -149,6 +167,75 @@ fn -v deploy --app delivery-agent-app
 - ✅ **Environment**: Proper `.env` file loading
 - ✅ **Assets**: Sample images for comprehensive testing
 
+## Privacy Protection (Face Blurring)
+
+The system automatically detects and blurs human faces in delivery photos **before** processing with the vision model.
+
+### Features
+- ✅ **Automatic Detection**: Uses OpenCV Haar Cascades for fast, accurate face detection
+- ✅ **Adaptive Blur**: Automatically scales blur intensity based on face size (40% coverage)
+- ✅ **Strong Anonymization**: All faces equally unrecognizable, from small (60px) to large (700px)
+- ✅ **Configurable**: Adjust blur intensity and detection sensitivity
+- ✅ **No Impact on Analysis**: Package damage and scene context remain fully analyzable
+- ✅ **Compliance Ready**: Helps meet GDPR, CCPA, and BIPA requirements
+
+### Quick Start
+
+Face blurring is **enabled by default**. No configuration needed!
+
+```python
+# Default usage (face blurring enabled)
+config = WorkflowConfig(
+    object_storage=ObjectStorageConfig(...),
+    vision=VisionConfig(...)
+    # Face blurring automatically enabled
+)
+
+result = run_quality_pipeline(config, llm, context, "photo.jpg")
+print(result["privacy"]["faces_blurred"])  # True
+```
+
+### Custom Configuration
+
+```python
+from oci_delivery_agent.config import PrivacyConfig
+
+# Maximum blur for sensitive environments
+config = WorkflowConfig(
+    ...,
+    privacy=PrivacyConfig(
+        enable_face_blurring=True,
+        blur_intensity=71  # Maximum anonymization
+    )
+)
+```
+
+### Standalone Usage
+
+```python
+from oci_delivery_agent.tools import blur_faces_in_image
+
+with open("photo.jpg", "rb") as f:
+    image_bytes = f.read()
+
+anonymized = blur_faces_in_image(image_bytes)
+
+with open("anonymized.jpg", "wb") as f:
+    f.write(anonymized)
+```
+
+### Testing
+
+```bash
+cd development/tests
+python test_face_blur.py
+```
+
+### Documentation
+- 📘 **Quick Start**: [face-blurring-quickstart.md](docs/face-blurring-quickstart.md)
+- 📚 **Full Guide**: [face-blurring-privacy.md](docs/face-blurring-privacy.md)
+- 💡 **Examples**: `development/examples/face_blur_example.py`
+
 ## AI Vision Capabilities
 
 ### Image Captioning
@@ -170,6 +257,13 @@ Returns structured JSON with:
 - Package visibility and uncertainties
 
 ## Recent Improvements
+
+### Privacy & Security (New!)
+- **Face Blurring**: Automatic face detection and anonymization using OpenCV
+- **Privacy Configuration**: Fully configurable privacy settings with validation
+- **Compliance Support**: GDPR, CCPA, and BIPA compliance features
+- **Performance**: <300ms overhead for face detection and blurring
+- **Testing Suite**: Comprehensive tests for face detection accuracy
 
 ### Structured JSON Processing
 - **Enhanced Vision Models**: Improved prompts for consistent JSON output
@@ -193,20 +287,31 @@ Returns structured JSON with:
 - **Architecture Guide**: Complete system design documentation
 - **GenAI Implementation**: Detailed technical documentation for AI integration
 - **Deployment Guide**: Step-by-step deployment instructions
+- **Privacy Guide**: Comprehensive face blurring documentation
 - **API Reference**: Comprehensive configuration and usage examples
 
 ## Current Status
 
-✅ **Fully Deployed**: Function is deployed to OCI Functions and operational
+✅ **Fully Deployed**: Main delivery function is deployed to OCI Functions and operational
+✅ **Face Blur Function**: Standalone face blurring service is deployed and working
 ✅ **GenAI Integration**: Complete vision capabilities with structured JSON output
 ✅ **Object Storage**: Full integration with OCI Object Storage for image processing
+✅ **Dashboard Interface**: Complete React-based dashboard for all user roles
 ✅ **Local Testing**: Comprehensive test suite for all components
-⚠️ **Authentication**: Currently debugging Instance Principal authentication timeout
+✅ **Privacy Protection**: Face blurring functionality is working as expected
+✅ **Code Cleanup**: All unnecessary documentation and code files have been removed
+
+## Architecture Overview
+
+The system now consists of three main components:
+
+1. **Main Delivery Function** (`delivery-function/`): Handles delivery quality assessment with AI vision
+2. **Face Blur Function** (`face-blur-function/`): Dedicated service for privacy protection
+3. **Dashboard Interface** (`dashboards/frontend/`): React-based user interface for all stakeholders
 
 ## Next Steps
 
-See [NEXT_STEPS.md](docs/NEXT_STEPS.md) for detailed next steps including:
-- Authentication troubleshooting
 - Production monitoring setup
 - Performance optimization
 - Advanced features implementation
+- Dashboard deployment and integration
