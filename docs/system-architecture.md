@@ -61,9 +61,11 @@ The project is organized into development and production environments for optima
 - `ExifExtractionTool` leverages Pillow to unpack EXIF blocks, flatten GPS metadata, and normalize it for distance calculations.
 - `compute_location_accuracy` in `chains.py` converts GPS coordinates to decimal degrees and evaluates the Haversine distance against expected delivery coordinates stored in the event payload or retrieved via a geocoding API.
 
-## 4. Visual Intelligence
+## 4. Visual Intelligence (Context-Aware Sequential Chaining)
 - `ImageCaptionTool` uses OCI Generative AI Vision models to analyze delivery scenes and generate structured JSON captions with scene type, package visibility, location details, environmental conditions, and safety assessment.
 - `DamageDetectionTool` leverages OCI Generative AI Vision models to detect and classify package damage with structured JSON output including overall severity, specific damage indicators (box deformation, corner damage, leakage, packaging integrity), and confidence scores.
+- **Context Passing**: Caption results are passed to damage assessment to ensure consistency. The damage model receives information about identified packages (e.g., "white plastic bag and blue cooler") so both tools analyze the same items.
+- **Package Definition**: Supports all delivery item types including cardboard boxes, plastic bags, envelopes, coolers, containers, and parcels.
 
 ## 5. LangChain Orchestration
 - `build_caption_chain` processes structured JSON captions from the vision model to produce reviewer-friendly summaries using OCI Generative AI chat API.

@@ -8,16 +8,23 @@ The OCI Delivery Agent uses OCI Generative AI Vision models to analyze delivery 
 
 ## Architecture
 
-### GenAI Vision Pipeline
+### GenAI Vision Pipeline (Context-Aware Sequential Chaining)
 ```
-Object Storage Image → Base64 Encoding → GenAI Vision API → Structured JSON → Quality Assessment
+Object Storage Image → Base64 Encoding → 
+  ↓
+Caption Tool (analyzes scene, identifies packages) → Structured JSON
+  ↓
+Damage Tool (receives caption context, evaluates same packages) → Structured JSON
+  ↓
+Quality Assessment (consistent package visibility across both tools)
 ```
 
 ### Key Components
 - **VisionClient**: Handles OCI Generative AI API communication
-- **ImageCaptionTool**: Generates structured scene descriptions
-- **DamageDetectionTool**: Detects and classifies package damage
-- **LangChain Integration**: Orchestrates the complete pipeline
+- **ImageCaptionTool**: Generates structured scene descriptions and identifies all delivery items
+- **DamageDetectionTool**: Detects and classifies package damage using caption context
+- **Context Passing**: Caption results inform damage assessment for consistency
+- **LangChain Integration**: Orchestrates the complete pipeline with chained tools
 
 ## API Configuration
 
@@ -67,8 +74,9 @@ OCI_GENAI_HOSTNAME=https://inference.generativeai.us-chicago-1.oci.oraclecloud.c
 
 ### Damage Detection Model
 - **Purpose**: Detect and classify package damage
-- **Input**: Base64-encoded image + damage analysis prompt
+- **Input**: Base64-encoded image + damage analysis prompt + **optional caption context**
 - **Output**: Structured JSON with damage assessment
+- **Context-Aware**: Receives caption results to know what packages to evaluate
 
 #### Damage JSON Schema
 ```json
@@ -147,8 +155,75 @@ chat_detail.serving_mode = oci.generative_ai_inference.models.DedicatedServingMo
 ### Prompt Engineering
 - **Caption Prompts**: Focus on delivery scene analysis with specific JSON schema
 - **Damage Prompts**: Target specific damage indicators with severity scoring
+- **Context-Aware Prompts**: Include caption results in damage assessment prompt for consistency
 - **Consistency**: Low temperature (0.1) for structured output generation
 - **Validation**: Keywords-based validation for damage severity assessment
+
+## Context-Aware Sequential Chaining
+
+### Overview
+The system uses **sequential context passing** to ensure consistency between caption and damage assessment results.
+
+### Implementation
+
+#### Step 1: Image Captioning (Identifies Packages)
+```python
+# Run caption tool first
+caption_json = tools["caption"].run(encoded_payload)
+caption_dict = json.loads(caption_json)
+
+# Example result:
+# {
+#   "packageVisible": true,
+#   "packageDescription": "A white plastic bag and a blue cooler with a white lid"
+# }
+```
+
+#### Step 2: Damage Assessment (Uses Caption Context)
+```python
+# Pass caption results to damage assessment
+damage_report = json.loads(tools["damage"].run(
+    encoded_payload,  # Image data
+    caption_context=caption_json  # Caption results as context
+))
+```
+
+#### Step 3: Context Integration in Prompt
+When caption identifies packages, the damage prompt includes:
+```
+CONTEXT: Prior analysis identified packages in this image: A white plastic bag and a blue cooler with a white lid.
+Your damage assessment should evaluate these identified items.
+
+[Rest of damage assessment instructions...]
+```
+
+### Benefits
+
+1. **Consistency**: Both tools agree on what packages are present
+2. **Accuracy**: Damage assessment knows exactly what items to evaluate
+3. **Package Type Support**: Handles all delivery item types (boxes, bags, coolers, envelopes, etc.)
+4. **Debugging**: Easy to trace what context was passed between tools
+5. **Modularity**: Each tool maintains its specialized role
+
+### Package Type Support
+
+The damage assessment now explicitly recognizes all delivery item types:
+- Cardboard boxes
+- Plastic bags
+- Envelopes
+- Coolers and containers
+- Parcels and packages
+- Any other delivered items
+
+This prevents false negatives where non-traditional packaging (like coolers or bags) were missed by the damage assessment.
+
+### Error Prevention
+
+**Problem Solved**: Previously, caption and damage tools made independent determinations about package visibility, leading to conflicts like:
+- Caption: "Package visible: white plastic bag and blue cooler"
+- Damage: "Package not visible"
+
+**Solution**: Damage assessment now receives caption context and evaluates the same items caption identified.
 
 ## Quality Assessment Integration
 

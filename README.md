@@ -238,16 +238,23 @@ python test_face_blur.py
 
 ## AI Vision Capabilities
 
+### Context-Aware Sequential Chaining
+The vision pipeline uses **context passing** to ensure consistency between tools:
+1. **Caption Tool** identifies all packages and delivery items first
+2. **Damage Tool** receives caption results as context
+3. Both tools analyze the same items for consistent results
+
 ### Image Captioning
 Returns structured JSON with:
 - Scene type (delivery/package/entrance/other)
-- Package visibility and description
+- Package visibility and description (all item types: boxes, bags, coolers, envelopes)
 - Location details (doorstep/porch/mailbox/etc.)
 - Environmental conditions (weather, time of day)
 - Safety assessment (protected, visible, secure)
 
-### Damage Detection
+### Damage Detection (Context-Aware)
 Returns structured JSON with:
+- **Context Integration**: Receives caption results to know what packages to evaluate
 - Overall severity and confidence score
 - Specific damage indicators:
   - Box deformation (crushed corners, bent edges)
@@ -255,10 +262,19 @@ Returns structured JSON with:
   - Leakage (liquid stains, moisture)
   - Packaging integrity (tears, holes, dents)
 - Package visibility and uncertainties
+- **Package Type Support**: Evaluates all delivery items (boxes, bags, coolers, containers, parcels)
 
 ## Recent Improvements
 
-### Privacy & Security (New!)
+### Context-Aware Vision Pipeline (Latest!)
+- **Sequential Chaining**: Caption results inform damage assessment for consistency
+- **Package Type Support**: Recognizes all delivery items (boxes, bags, coolers, envelopes, containers)
+- **Conflict Prevention**: Ensures both vision tools agree on package visibility
+- **Context Passing**: Damage assessment receives caption results as prompt context
+- **Improved Accuracy**: Damage tool knows exactly what items to evaluate
+- **Documentation**: Complete chaining strategy documentation in `docs/vision-chaining-strategies.md`
+
+### Privacy & Security
 - **Face Blurring**: Automatic face detection and anonymization using OpenCV
 - **Privacy Configuration**: Fully configurable privacy settings with validation
 - **Compliance Support**: GDPR, CCPA, and BIPA compliance features

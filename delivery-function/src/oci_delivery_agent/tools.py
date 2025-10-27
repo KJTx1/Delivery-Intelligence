@@ -190,10 +190,25 @@ class VisionClient:
         
         return self._client
 
-    def _damage_json_prompt(self) -> str:
-        """Return strict JSON-only prompt for damage assessment."""
+    def _damage_json_prompt(self, caption_context: Optional[Dict[str, Any]] = None) -> str:
+        """Return strict JSON-only prompt for damage assessment.
+        
+        Args:
+            caption_context: Optional caption results to provide context about visible packages
+        """
         # Get scoring thresholds from config
         scoring = self._config.damage_scoring
+        
+        # Build context section if caption was provided
+        context_section = ""
+        if caption_context:
+            pkg_visible = caption_context.get("packageVisible", False)
+            pkg_desc = caption_context.get("packageDescription", "")
+            if pkg_visible and pkg_desc:
+                context_section = (
+                    f"CONTEXT: Prior analysis identified packages in this image: {pkg_desc}\n"
+                    f"Your damage assessment should evaluate these identified items.\n\n"
+                )
         
         return (
             "You are a delivery damage inspector. Analyze the provided image and produce ONLY a single JSON object (no markdown, no preface, no trailing text) with this exact structure:\n\n"
@@ -208,17 +223,22 @@ class VisionClient:
             "  \"packageVisible\": true|false,\n"
             "  \"uncertainties\": \"string\"\n"
             "}\n\n"
+            f"{context_section}"
+            "Important: A 'package' includes ANY delivered items: cardboard boxes, plastic bags, envelopes, containers, parcels, or any other delivery items.\n\n"
             "Definitions:\n"
-            "- boxDeformation: crushed corners, bent edges, bulging sides, structural collapse.\n"
-            "- cornerDamage: crushed/abraded/torn/dented corners.\n"
-            "- leakage: liquid stains, wet spots, moisture damage.\n"
-            "- packagingIntegrity: tears, holes, dents, scratches, tape failure.\n\n"
+            "- boxDeformation: crushed corners, bent edges, bulging sides, structural collapse (applies to boxes, bags, containers).\n"
+            "- cornerDamage: crushed/abraded/torn/dented corners (for any package type with corners).\n"
+            "- leakage: liquid stains, wet spots, moisture damage (visible on or around any package).\n"
+            "- packagingIntegrity: tears, holes, dents, scratches, tape failure, visible damage to any package surface.\n\n"
             "Rules:\n"
-            "- If the package is not visible, set \"packageVisible\": false and \"overall.severity\": \"none\", \"overall.score\": 0.0 with rationale.\n"
-            f"- If no damage is visible, set all indicators.present=false, severity=\"none\", evidence=\"none\", overall.severity=\"none\", overall.score<={scoring.none_max}.\n"
+            "- FIRST, identify if ANY delivery items (boxes, bags, coolers, envelopes, containers, parcels) are visible.\n"
+            "- If ANY delivery items are visible, set \"packageVisible\": true and assess damage on those items.\n"
+            "- If absolutely NO delivery items are visible, set \"packageVisible\": false and \"overall.severity\": \"none\", \"overall.score\": 0.0 with rationale.\n"
+            f"- If delivery items are visible but no damage is visible, set all indicators.present=false, severity=\"none\", evidence=\"none\", overall.severity=\"none\", overall.score<={scoring.none_max}.\n"
             f"- Calibrate score by worst indicator: severe ≈ {scoring.severe_min}, moderate ≈ {scoring.moderate_min}–{scoring.moderate_max}, minor ≈ {scoring.minor_min}–{scoring.minor_max}, none ≤ {scoring.none_max}.\n"
             "- Keep evidence short and visual (what/where). Be precise, no speculation.\n"
             f"- If any of these keywords are observed: crushed, bent, bulging, tear, hole, dent, leak, wet, stain → minimum severity is 'minor' and score ≥ {scoring.minor_min}.\n"
+            "- For plastic bags and soft containers: assess tears, holes, and structural integrity instead of box deformation.\n"
             "- Output MUST be valid JSON, UTF-8, no trailing commas, no extra commentary.\n\n"
             "Now analyze the image and output the JSON only."
         )
@@ -443,8 +463,13 @@ class VisionClient:
             print(f"Error generating caption: {e}")
             return json.dumps({"error": str(e)})
 
-    def detect_damage(self, image_bytes: bytes) -> Dict[str, Any]:
-        """Detect damage using GenAI with strict JSON output for indicators."""
+    def detect_damage(self, image_bytes: bytes, caption_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Detect damage using GenAI with strict JSON output for indicators.
+        
+        Args:
+            image_bytes: The image data to analyze
+            caption_context: Optional caption results to provide context about visible packages
+        """
         try:
             import oci
             import base64
@@ -464,7 +489,7 @@ class VisionClient:
             
             # Strict JSON prompt for robust downstream parsing
             text_content = oci.generative_ai_inference.models.TextContent()
-            text_content.text = self._damage_json_prompt()
+            text_content.text = self._damage_json_prompt(caption_context)
             
             # EXACT COPY from working console test - try ImageUrl first, fallback to source
             try:
@@ -684,10 +709,24 @@ class DamageDetectionTool(BaseTool):
         self._config = config
         self._client = VisionClient(config)
 
-    def _run(self, encoded_payload: str) -> str:
+    def _run(self, encoded_payload: str, caption_context: Optional[str] = None) -> str:
+        """Run damage detection, optionally using caption context.
+        
+        Args:
+            encoded_payload: Base64-encoded image data
+            caption_context: Optional JSON string with caption results for context
+        """
         image_bytes = base64.b64decode(encoded_payload)
-        result = self._client.detect_damage(image_bytes)
-        # detect_damage now returns indicators dict directly
+        
+        # Parse caption context if provided
+        context_dict = None
+        if caption_context:
+            try:
+                context_dict = json.loads(caption_context)
+            except json.JSONDecodeError:
+                print(f"Warning: Could not parse caption_context: {caption_context}")
+        
+        result = self._client.detect_damage(image_bytes, caption_context=context_dict)
         return json.dumps(result)
 
     async def _arun(self, encoded_payload: str) -> str:  # pragma: no cover

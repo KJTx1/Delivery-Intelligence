@@ -4,13 +4,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional
 
 from langchain.chains import LLMChain, SequentialChain
 from langchain.prompts import PromptTemplate
 from langchain_core.language_models import BaseLLM
 
-from .config import WorkflowConfig
+from .config import WorkflowConfig, DamageTypeWeights, SeverityScores
 from .tools import toolset
 
 
@@ -193,8 +193,10 @@ def run_quality_pipeline(
 
     exif_raw = json.loads(tools["exif"].run(encoded_payload))
     
-    # Get structured caption JSON
+    # Get structured caption JSON (do this first to provide context)
     caption_json = tools["caption"].run(encoded_payload)
+    caption_dict = json.loads(caption_json)
+    
     caption_summary = build_caption_chain(llm).invoke(
         {
             "metadata": json.dumps(retrieval_output["metadata"]),
@@ -202,8 +204,11 @@ def run_quality_pipeline(
         }
     )["caption_summary"]
     
-    # Get structured damage report JSON
-    damage_report = json.loads(tools["damage"].run(encoded_payload))
+    # Get structured damage report JSON with caption context for consistency
+    damage_report = json.loads(tools["damage"].run(
+        encoded_payload,  # First positional argument
+        caption_context=caption_json  # Pass caption results as context
+    ))
 
     weights = config.quality_weights.normalized()
     quality_metrics = compute_quality_index(
@@ -242,7 +247,7 @@ def run_quality_pipeline(
     return {
         "metadata": retrieval_output["metadata"],
         "exif": exif_raw,
-        "caption_json": json.loads(caption_json),
+        "caption_json": caption_dict,  # Already parsed above
         "caption_summary": caption_summary,
         "damage_report": damage_report,
         "quality_metrics": quality_metrics,

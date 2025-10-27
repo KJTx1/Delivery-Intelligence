@@ -19,7 +19,9 @@ This directory contains all documentation for the OCI Delivery Agent project.
 
 ### 🔧 Implementation Guides
 - **[GenAI Vision Implementation](genai-vision-implementation.md)** - Vision model integration details
+- **[Vision Chaining Strategies](vision-chaining-strategies.md)** - Context-aware sequential chaining implementation
 - **[OCI GenAI API Integration](oci-genai-api-integration.md)** - API integration guide
+- **[API Response Format](api-response-format.md)** - Response structure and quality metrics
 
 ## 🎯 Quick Start Guide
 
