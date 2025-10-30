@@ -1,5 +1,5 @@
 fdk>=0.1.21
-oci>=2.145.0
+oci>=2.162.0
 pillow>=9.0.0
 python-dotenv>=1.0.0
 opencv-python-headless>=4.8.0
